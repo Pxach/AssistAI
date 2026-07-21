@@ -1,6 +1,7 @@
 {
   "name": "int-prj",
   "version": "1.0.0",
+  "type": "module",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -9,7 +10,6 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
     "@builderbot/bot": "^1.4.2",
     "@builderbot/provider-baileys": "^1.4.2",
