@@ -1,11 +1,12 @@
-const express = require('express');
+import express from 'express';
+import { getReviews, submitReview } from '../controllers/reviewController.js';
+
 const router = express.Router();
-const reviewController = require('../controllers/reviewController');
 
 // GET /api/reviews - Fetch review list
-router.get('/', reviewController.getReviews);
+router.get('/', getReviews);
 
 // POST /api/reviews - Submit review and get redirection URL
-router.post('/', reviewController.submitReview);
+router.post('/', submitReview);
 
-module.exports = router;
+export default router;

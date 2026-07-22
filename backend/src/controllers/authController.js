@@ -2,7 +2,7 @@
 let mockAdmins = [];
 
 // Admin Sign Up (Requires company email)
-const register = async (req, res) => {
+export const register = async (req, res) => {
     const { email, password, companyName } = req.body;
 
     if (!email || !password || !companyName) {
@@ -42,7 +42,7 @@ const register = async (req, res) => {
 };
 
 // Admin Log In
-const login = async (req, res) => {
+export const login = async (req, res) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
@@ -72,9 +72,4 @@ const login = async (req, res) => {
             Role: user.Role
         }
     });
-};
-
-module.exports = {
-    register,
-    login
 };

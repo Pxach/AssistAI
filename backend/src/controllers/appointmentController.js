@@ -1,8 +1,7 @@
-const { mockAppointments } = require('../data/mockBookingData');
-const { processBookingRequest } = require('../services/bookingHandler');
+import { mockAppointments } from '../data/mockBookingData.js';
+import { processBookingRequest } from '../services/bookingHandler.js';
 
-// Fetch mock appointments
-const getAppointments = async (req, res) => {
+export const getAppointments = async (req, res) => {
     try {
         res.status(200).json({ success: true, count: mockAppointments.length, data: mockAppointments });
     } catch (error) {
@@ -10,8 +9,7 @@ const getAppointments = async (req, res) => {
     }
 };
 
-// Check slot availability in mock array
-const checkAvailability = async (req, res) => {
+export const checkAvailability = async (req, res) => {
     const { date, time } = req.query;
     const existing = mockAppointments.find(
         app => app.appointment_date === date && app.appointment_time === time
@@ -24,8 +22,7 @@ const checkAvailability = async (req, res) => {
     });
 };
 
-// Direct manual appointment creation
-const createAppointment = async (req, res) => {
+export const createAppointment = async (req, res) => {
     const { name, phoneNumber, email, date, time } = req.body;
 
     if (!date || !time || !phoneNumber) {
@@ -55,12 +52,10 @@ const createAppointment = async (req, res) => {
     });
 };
 
-// Process AI Booking Decision Matrix & simulate saving to memory
-const processBooking = async (req, res) => {
+export const processBooking = async (req, res) => {
     try {
         const result = processBookingRequest(req.body);
 
-        // If appointment details are complete, simulate saving to mock DB
         if (result.service_requested && result.appointment_date && result.appointment_time) {
             const newRecord = {
                 id: mockAppointments.length + 1,
@@ -88,11 +83,4 @@ const processBooking = async (req, res) => {
             error: error.message
         });
     }
-};
-
-module.exports = {
-    getAppointments,
-    checkAvailability,
-    createAppointment,
-    processBooking
 };

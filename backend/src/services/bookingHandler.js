@@ -1,7 +1,7 @@
-const { services, specialists, specialistServices } = require('../data/mockBookingData');
-const { generateGoogleCalendarLink } = require('./calendarService');
+import { services, specialists, specialistServices } from '../data/mockBookingData.js';
+import { generateGoogleCalendarLink } from './calendarService.js';
 
-function processBookingRequest(input) {
+export function processBookingRequest(input) {
   const { customer_name, contact_info, service_name, specialist_name, appointment_date, appointment_time } = input;
 
   const matchedService = service_name
@@ -110,5 +110,3 @@ function formatBookingOutput(data) {
     ...(data.available_specialists && { available_specialists: data.available_specialists })
   };
 }
-
-module.exports = { processBookingRequest };

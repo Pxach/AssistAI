@@ -2,7 +2,7 @@
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> } 
  */
-exports.seed = async function(knex) {
+export async function seed(knex) {
   // Clear existing entries in child -> parent order
   await knex('specialist_services').del();
   await knex('specialists').del();
@@ -31,4 +31,4 @@ exports.seed = async function(knex) {
     { specialist_id: sp2.id || sp2, service_id: s3.id || s3 }, // Karim -> Code Audit
     { specialist_id: sp3.id || sp3, service_id: s4.id || s4 }  // Lina  -> Financial Consultation
   ]);
-};
+}

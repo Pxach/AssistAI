@@ -1,17 +1,23 @@
-const express = require('express');
-const router = express.Router();
-const appointmentController = require('../controllers/appointmentController');
+import express from 'express';
+import {
+  getAppointments,
+  checkAvailability,
+  createAppointment,
+  processBooking
+} from '../controllers/appointmentController.js';
 
-// GET /api/appointments - Fetch all appointments
-router.get('/', appointmentController.getAppointments);
+const router = express.Router();
+
+// GET /api/appointments
+router.get('/', getAppointments);
 
 // GET /api/appointments/check-availability
-router.get('/check-availability', appointmentController.checkAvailability);
+router.get('/check-availability', checkAvailability);
 
-// POST /api/appointments - Create temporary or confirmed appointment
-router.post('/', appointmentController.createAppointment);
+// POST /api/appointments
+router.post('/', createAppointment);
 
-// POST /api/appointments/process - Process AI decision matrix payload
-router.post('/process', appointmentController.processBooking);
+// POST /api/appointments/process
+router.post('/process', processBooking);
 
-module.exports = router;
+export default router;

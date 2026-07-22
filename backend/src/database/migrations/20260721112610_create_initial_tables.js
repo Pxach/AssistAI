@@ -2,7 +2,7 @@
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
-exports.up = function(knex) {
+export function up(knex) {
   return knex.schema
     // 1. Company Table
     .createTable('Company', (table) => {
@@ -27,21 +27,21 @@ exports.up = function(knex) {
       table.string('Name');
       table.string('PreferredLanguage').defaultTo('English');
     })
-    // 4. Services Table (New)
+    // 4. Services Table
     .createTable('services', (table) => {
       table.increments('id').primary();
       table.string('name').notNullable();
       table.string('department').notNullable();
       table.integer('duration_minutes').defaultTo(60);
     })
-    // 5. Specialists Table (New)
+    // 5. Specialists Table
     .createTable('specialists', (table) => {
       table.increments('id').primary();
       table.string('name').notNullable();
       table.string('department').notNullable();
       table.string('calendar_id').nullable();
     })
-    // 6. Specialist Services Junction Table (New)
+    // 6. Specialist Services Junction Table
     .createTable('specialist_services', (table) => {
       table.integer('specialist_id').unsigned().notNullable()
         .references('id').inTable('specialists').onDelete('CASCADE');
@@ -49,7 +49,7 @@ exports.up = function(knex) {
         .references('id').inTable('services').onDelete('CASCADE');
       table.primary(['specialist_id', 'service_id']);
     })
-// 7. Appointments Table (Updated)
+    // 7. Appointments Table
     .createTable('appointments', (table) => {
       table.increments('id').primary();
       table.string('customer_name').notNullable();
@@ -62,7 +62,7 @@ exports.up = function(knex) {
       table.date('appointment_date').notNullable();
       table.time('appointment_time').notNullable();
       table.string('status').defaultTo('pending'); // Supports: 'pending', 'confirmed', 'completed', 'cancelled'
-      table.boolean('review_prompt_sent').defaultTo(false); // <-- NEW: Tracks review trigger status
+      table.boolean('review_prompt_sent').defaultTo(false); // Tracks review trigger status
       table.timestamp('created_at').defaultTo(knex.fn.now());
     })
     // 8. ChatSession Table
@@ -90,13 +90,13 @@ exports.up = function(knex) {
       table.timestamp('CreatedAt').defaultTo(knex.fn.now());
       table.string('Category');
     });
-};
+}
 
 /**
  * @param { import("knex").Knex } knex
  * @returns { Promise<void> }
  */
-exports.down = function(knex) {
+export function down(knex) {
   return knex.schema
     .dropTableIfExists('Review')
     .dropTableIfExists('ChatLogs')
@@ -108,4 +108,4 @@ exports.down = function(knex) {
     .dropTableIfExists('Customer')
     .dropTableIfExists('AdminUser')
     .dropTableIfExists('Company');
-};
+}

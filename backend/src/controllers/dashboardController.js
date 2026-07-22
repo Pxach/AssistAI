@@ -1,5 +1,5 @@
 // Mock Dashboard Analytics Metrics
-const getDashboardStats = async (req, res) => {
+export const getDashboardStats = async (req, res) => {
     try {
         res.status(200).json({
             success: true,
@@ -40,8 +40,4 @@ const getDashboardStats = async (req, res) => {
             error: error.message
         });
     }
-};
-
-module.exports = {
-    getDashboardStats
 };

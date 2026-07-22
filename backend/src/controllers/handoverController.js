@@ -11,7 +11,7 @@ let mockHandoverSessions = [
 ];
 
 // Get all active handover requests (For Dashboard alerts)
-const getHandoverRequests = async (req, res) => {
+export const getHandoverRequests = async (req, res) => {
     try {
         const pending = mockHandoverSessions.filter(s => s.Handover === true && s.Status === 'PENDING');
         res.status(200).json({ success: true, count: pending.length, data: pending });
@@ -21,7 +21,7 @@ const getHandoverRequests = async (req, res) => {
 };
 
 // Flag a chat session for human intervention (Triggered by AI or Customer)
-const requestHandover = async (req, res) => {
+export const requestHandover = async (req, res) => {
     const { phoneNumber } = req.body;
 
     if (!phoneNumber) {
@@ -53,7 +53,7 @@ const requestHandover = async (req, res) => {
 };
 
 // Manager action: ACCEPT or DECLINE
-const respondToHandover = async (req, res) => {
+export const respondToHandover = async (req, res) => {
     const { phoneNumber, action } = req.body; // Action MUST be 'ACCEPT' or 'DECLINE'
 
     if (!phoneNumber || !['ACCEPT', 'DECLINE'].includes(action)) {
@@ -84,10 +84,4 @@ const respondToHandover = async (req, res) => {
         clientNotice: clientNotice,
         data: session
     });
-};
-
-module.exports = {
-    getHandoverRequests,
-    requestHandover,
-    respondToHandover
 };

@@ -1,9 +1,11 @@
-require('dotenv').config();
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 /**
  * @type { Object.<string, import("knex").Knex.Config> }
  */
-module.exports = {
+export default {
   development: {
     client: 'pg',
     connection: {

@@ -12,7 +12,7 @@ let mockReviews = [
 ];
 
 // Get all reviews (For Dashboard Analytics)
-const getReviews = async (req, res) => {
+export const getReviews = async (req, res) => {
     try {
         res.status(200).json({ success: true, count: mockReviews.length, data: mockReviews });
     } catch (error) {
@@ -21,7 +21,7 @@ const getReviews = async (req, res) => {
 };
 
 // Submit customer review & determine redirection logic
-const submitReview = async (req, res) => {
+export const submitReview = async (req, res) => {
     const { rating, reviewText, phoneNumber } = req.body;
 
     if (!rating) {
@@ -55,9 +55,4 @@ const submitReview = async (req, res) => {
         redirectUrl: redirectUrl,
         data: newReview
     });
-};
-
-module.exports = {
-    getReviews,
-    submitReview
 };

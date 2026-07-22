@@ -1,8 +1,9 @@
-const express = require('express');
+import express from 'express';
+import { getDashboardStats } from '../controllers/dashboardController.js';
+
 const router = express.Router();
-const dashboardController = require('../controllers/dashboardController');
 
 // GET /api/dashboard/stats - Fetch overview and analytics data for dashboard
-router.get('/stats', dashboardController.getDashboardStats);
+router.get('/stats', getDashboardStats);
 
-module.exports = router;
+export default router;
