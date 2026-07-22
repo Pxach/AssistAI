@@ -1,22 +1,7 @@
-const db = require('../database/db');
+const { mockAppointments } = require('../data/mockBookingData');
 const { processBookingRequest } = require('../services/bookingHandler');
 
-// Mock Data Store
-let mockAppointments = [
-    {
-        AppointmentID: '123e4567-e89b-12d3-a456-426614174000',
-        CustomerID: '987f6543-e21b-12d3-a456-426614174000',
-        Name: 'John Doe',
-        PhoneNumber: '+212600000000',
-        Email: 'john@example.com',
-        Date: '2026-07-25',
-        Time: '10:00:00',
-        Confirmed: true,
-        ToDelete: false
-    }
-];
-
-// Get all appointments
+// Fetch mock appointments
 const getAppointments = async (req, res) => {
     try {
         res.status(200).json({ success: true, count: mockAppointments.length, data: mockAppointments });
@@ -25,19 +10,21 @@ const getAppointments = async (req, res) => {
     }
 };
 
-// Check slot availability
+// Check slot availability in mock array
 const checkAvailability = async (req, res) => {
     const { date, time } = req.query;
-    const isTaken = mockAppointments.some(app => app.Date === date && app.Time === time);
-    
+    const existing = mockAppointments.find(
+        app => app.appointment_date === date && app.appointment_time === time
+    );
+
     res.status(200).json({
         success: true,
-        available: !isTaken,
+        available: !existing,
         requestedSlot: { date, time }
     });
 };
 
-// Create new appointment
+// Direct manual appointment creation
 const createAppointment = async (req, res) => {
     const { name, phoneNumber, email, date, time } = req.body;
 
@@ -46,15 +33,17 @@ const createAppointment = async (req, res) => {
     }
 
     const newAppointment = {
-        AppointmentID: `mock-${Date.now()}`,
-        CustomerID: `cust-${Date.now()}`,
-        Name: name || 'Anonymous',
-        PhoneNumber: phoneNumber,
-        Email: email || null,
-        Date: date,
-        Time: time,
-        Confirmed: false,
-        ToDelete: true
+        id: mockAppointments.length + 1,
+        customer_name: name || 'Anonymous',
+        contact_info: phoneNumber || email || 'Pending',
+        department: 'general',
+        specialist_id: null,
+        service_id: 1,
+        appointment_date: date,
+        appointment_time: time,
+        status: 'pending',
+        review_prompt_sent: false,
+        created_at: new Date().toISOString()
     };
 
     mockAppointments.push(newAppointment);
@@ -66,10 +55,31 @@ const createAppointment = async (req, res) => {
     });
 };
 
-// Process AI Booking Decision Matrix (New)
+// Process AI Booking Decision Matrix & simulate saving to memory
 const processBooking = async (req, res) => {
     try {
         const result = processBookingRequest(req.body);
+
+        // If appointment details are complete, simulate saving to mock DB
+        if (result.service_requested && result.appointment_date && result.appointment_time) {
+            const newRecord = {
+                id: mockAppointments.length + 1,
+                customer_name: result.customer_name,
+                contact_info: result.contact_info,
+                department: result.department,
+                specialist_id: result.specialist_id,
+                service_id: result.service_id,
+                appointment_date: result.appointment_date,
+                appointment_time: result.appointment_time,
+                status: 'pending',
+                review_prompt_sent: false,
+                created_at: new Date().toISOString()
+            };
+
+            mockAppointments.push(newRecord);
+            result.db_record_id = newRecord.id;
+        }
+
         res.status(200).json({ success: true, data: result });
     } catch (error) {
         res.status(500).json({

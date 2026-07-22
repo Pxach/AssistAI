@@ -1,4 +1,3 @@
-// Mock dataset mirroring the PostgreSQL tables
 const services = [
   { id: 1, name: 'UI/UX Review', department: 'it', duration_minutes: 45 },
   { id: 2, name: 'Database Optimization', department: 'it', duration_minutes: 60 },
@@ -7,22 +6,40 @@ const services = [
 ];
 
 const specialists = [
-  { id: 101, name: 'Sarah', department: 'it', calendar_id: 'sarah@company.com' },
-  { id: 102, name: 'Karim', department: 'it', calendar_id: 'karim@company.com' },
-  { id: 103, name: 'Lina', department: 'finance', calendar_id: 'lina@company.com' }
+  { id: 1, name: 'Sarah', department: 'it', calendar_id: 'sarah@company.com' },
+  { id: 2, name: 'Karim', department: 'it', calendar_id: 'karim@company.com' },
+  { id: 3, name: 'Lina', department: 'finance', calendar_id: 'lina@company.com' }
 ];
 
-// Junction table: Mapping specialist capabilities to services
+// Junction mapping
 const specialistServices = [
-  { specialist_id: 101, service_id: 1 }, // Sarah -> UI/UX Review
-  { specialist_id: 101, service_id: 3 }, // Sarah -> Code Audit
-  { specialist_id: 102, service_id: 2 }, // Karim -> Database Optimization
-  { specialist_id: 102, service_id: 3 }, // Karim -> Code Audit
-  { specialist_id: 103, service_id: 4 }  // Lina  -> Financial Consultation
+  { specialist_id: 1, service_id: 1 }, // Sarah -> UI/UX Review
+  { specialist_id: 1, service_id: 3 }, // Sarah -> Code Audit
+  { specialist_id: 2, service_id: 2 }, // Karim -> Database Optimization
+  { specialist_id: 2, service_id: 3 }, // Karim -> Code Audit
+  { specialist_id: 3, service_id: 4 }  // Lina  -> Financial Consultation
+];
+
+// Mock database table for appointments
+let mockAppointments = [
+  {
+    id: 1,
+    customer_name: 'John Doe',
+    contact_info: 'john@example.com',
+    department: 'it',
+    specialist_id: 1,
+    service_id: 1,
+    appointment_date: '2026-07-25',
+    appointment_time: '10:00:00',
+    status: 'completed',
+    review_prompt_sent: false,
+    created_at: new Date().toISOString()
+  }
 ];
 
 module.exports = {
   services,
   specialists,
-  specialistServices
+  specialistServices,
+  mockAppointments
 };

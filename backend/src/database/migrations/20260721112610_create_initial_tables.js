@@ -49,7 +49,7 @@ exports.up = function(knex) {
         .references('id').inTable('services').onDelete('CASCADE');
       table.primary(['specialist_id', 'service_id']);
     })
-    // 7. Appointments Table (Updated Schema)
+// 7. Appointments Table (Updated)
     .createTable('appointments', (table) => {
       table.increments('id').primary();
       table.string('customer_name').notNullable();
@@ -61,7 +61,8 @@ exports.up = function(knex) {
         .references('id').inTable('services').onDelete('CASCADE');
       table.date('appointment_date').notNullable();
       table.time('appointment_time').notNullable();
-      table.string('status').defaultTo('pending');
+      table.string('status').defaultTo('pending'); // Supports: 'pending', 'confirmed', 'completed', 'cancelled'
+      table.boolean('review_prompt_sent').defaultTo(false); // <-- NEW: Tracks review trigger status
       table.timestamp('created_at').defaultTo(knex.fn.now());
     })
     // 8. ChatSession Table
