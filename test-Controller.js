@@ -2,58 +2,47 @@
 import 'dotenv/config';
 import { processUserMessage } from './src/controllers/chatController.js';
 
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+async function runMultilingualReviewTest() {
+  console.log("==================================================");
+  console.log(" 🌍 TESTING MULTILINGUAL WHATSAPP REVIEW BUTTONS  ");
+  console.log("==================================================\n");
 
-async function runFullSystemTest() {
-  console.log("========================================");
-  console.log("      🚀 FULL SYSTEM INTEGRATION TEST   ");
-  console.log("========================================\n");
-
-  let currentContext = {};
-
-  const conversation = [
-    // 1. Test FAQ (Should trigger faqHandler and answer based on the JSON knowledge base)
-    "Quelles sont vos heures d'ouverture ?",
-    
-    // 2. Test Booking Start (Should trigger bookingHandler and ask for a specialist)
-    "Je veux réserver une session de UI/UX Review.",
-    
-    // 3. Test Context Memory (Router should remember we are booking and not fail)
-    "Avec Karim s'il vous plaît.",
-    
-    // 4. Test Handover (Should interrupt the flow, trigger handoverHandler, and wipe memory)
-    "En fait, je préfère parler à un agent."
+  const testCases = [
+    {
+      language: 'darija',
+      input: { type: 'interactive_button', buttonId: 'REVIEW_SCORE_5', label: '🟢 Excellent (5 Stars)' }
+    },
+    {
+      language: 'darija',
+      input: { type: 'interactive_button', buttonId: 'REVIEW_SCORE_1', label: '🔴 Décevant (1 Star)' }
+    },
+    {
+      language: 'ar',
+      input: { type: 'interactive_button', buttonId: 'REVIEW_SCORE_5', label: '🟢 Excellent (5 Stars)' }
+    },
+    {
+      language: 'en',
+      input: { type: 'interactive_button', buttonId: 'REVIEW_SCORE_3', label: '🟡 Moyen (3 Stars)' }
+    },
+    {
+      // Testing the fallback: an unsupported language code should default to French
+      language: 'es', 
+      input: { type: 'interactive_button', buttonId: 'REVIEW_SCORE_1', label: '🔴 Décevant (1 Star)' }
+    }
   ];
 
-  for (let i = 0; i < conversation.length; i++) {
-    const userInput = conversation[i];
-    console.log(`\n👤 User: "${userInput}"`);
+  for (let i = 0; i < testCases.length; i++) {
+    const testCase = testCases[i];
     
-    // Process the message
-    const result = await processUserMessage(userInput, "fr", currentContext);
+    console.log(`👤 User [Lang: ${testCase.language.toUpperCase()}]: [BUTTON CLICK: ${testCase.input.label}]`);
     
-    console.log(`🤖 Bot (${result.metadata.intent}): ${result.data.reply}`);
+    // Process the simulated button click, passing the specific language
+    const result = await processUserMessage(testCase.input, testCase.language, {});
     
-    // Update memory for the next loop
-    currentContext = result.data.newContext || {};
-    
-    // Print background status
-    if (result.data.needsHandover) {
-      console.log(`   [System Status: Handover Triggered! 🚨]`);
-    } else if (currentContext.bookingState) {
-      console.log(`   [System Status: Booking in progress...]`);
-    } else {
-      console.log(`   [System Status: Memory Clear]`);
-    }
-
-    // Keep the 8-second delay to protect against Gemini API rate limits
-    if (i < conversation.length - 1) {
-      console.log(`   ... waiting 8 seconds to respect API limits ...`);
-      await sleep(8000); 
-    }
+    console.log(`🤖 Bot (${result.metadata.intent}): ${result.data.reply}\n`);
   }
   
-  console.log("\n✅ Test Complete! You are safe to commit and push your code.");
+  console.log("✅ Multilingual Test Complete! You can safely commit your changes.");
 }
 
-runFullSystemTest();
+runMultilingualReviewTest();
