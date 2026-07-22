@@ -69,51 +69,81 @@ export async function processUserMessage(rawInput, language = 'fr', context = {}
   const securityResult = await sanitizeInput(textToProcess);
   
   if (!securityResult.safe) {
+    const securityFallbackReplies = {
+      fr: "Je suis désolé, je ne peux pas traiter cette demande. Comment puis-je vous aider autrement ?",
+      en: "I am sorry, I cannot process this request. How else can I help you?",
+      ar: "أنا آسف، لا يمكنني معالجة هذا الطلب. كيف يمكنني مساعدتك بطريقة أخرى؟",
+      darija: "Smahli, ma9dertch njaweb 3la had ltalab. Kifach n9der n3awnek b chi7aja khora?"
+    };
+
+    const activeLang = securityFallbackReplies[language] ? language : 'fr';
+
     return {
       status: 'blocked',
-      reason: securityResult.reason || 'SECURITY_FLAG',
-      response: "Je suis désolé, je ne peux pas traiter cette demande. Comment puis-je vous aider autrement ?"
+      metadata: {
+        intent: 'unknown',
+        detectedLanguage: language
+      },
+      data: {
+        reply: securityFallbackReplies[activeLang],
+        needsHandover: false,
+        newContext: null
+      }
     };
   }
 
   const cleanText = securityResult.cleanText;
 
   // 4. Intent Routing
-  const intent = await routeIntent(cleanText, language, context);
+  const routerResponse = await routeIntent(cleanText, language, context);
+
+  // Handle both string (old) and object (new) responses gracefully
+  const aiIntent = typeof routerResponse === 'string' ? routerResponse : routerResponse.intent;
+  const aiDetectedLang = typeof routerResponse === 'object' ? routerResponse.detectedLanguage : language; // Default to current language if not detected
+
+  const activeLang = aiDetectedLang || language;
 
   // 5. Dispatch to the correct handler
   let handlerResult;
   
-  switch (intent) {
+  switch (aiIntent) {
     case 'faq':
-      handlerResult = await handleFaq(cleanText, language, context);
+      handlerResult = await handleFaq(cleanText, activeLang, context);
       break;
       
     case 'handover':
-      handlerResult = await handleHandover(cleanText, language, context);
+      handlerResult = await handleHandover(cleanText, activeLang, context);
       break;
 
     case 'booking': 
-      handlerResult = await handleBooking(cleanText, language, context);
+      handlerResult = await handleBooking(cleanText, activeLang, context);
       break;
 
     case 'unknown':
-    default:
+    default: {
+      const unknownReplies = {
+        fr: "Je n'ai pas bien compris. Pouvez-vous reformuler ?",
+        en: "I didn't quite catch that. Could you rephrase?",
+        ar: "عذراً، لم أفهم ذلك. هل يمكنك توضيح سؤالك؟",
+        darija: "Smahli, mafhamtch mzyan. Wach t9der t3awed b tari9a khra?"
+      };
       handlerResult = {
-        reply: "Je n'ai pas bien compris. Pouvez-vous reformuler ?",
+        reply: unknownReplies[activeLang] || unknownReplies['fr'],
         needsHandover: false,
         newContext: context
       };
       break;
+    }
   }
 
   // 6. Return the final structured response
-  return {
-    status: 'success',
-    metadata: {
-      intent: intent,
-      language: language
-    },
-    data: handlerResult
-  };
+    return {
+      status: 'success',
+      metadata: {
+        intent: aiIntent,
+        language: activeLang,
+        detectedLanguage: aiDetectedLang
+      },
+      data: handlerResult
+    };
 }

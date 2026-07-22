@@ -26,22 +26,38 @@ export async function routeIntent(message, language, context = {}) {
     2. HANDOVER AGREEMENT: IF the AI's Last Message explicitly offered a human agent AND the user agrees (yes, oui, ok), you MUST classify as 'handover'.
     3. ORPHAN AGREEMENT: IF the AI's Last Message is unrelated to an agent, and the user just says an agreement word out of nowhere, classify as 'unknown'.
 
-    Respond with ONLY the intent name in lowercase. Do not add punctuation or explanation.
+    CRITICAL RULE: You must detect the language of the user's input. The possible output languages are 'en' (English), 'fr' (French), 'ar' (Arabic), or 'darija' (Moroccan Darija).
+
+    Respond with ONLY a raw JSON object (no Markdown formatting, no code blocks) with this exact schema:
+    {
+      "intent": "<classified_intent_string>",
+      "detectedLanguage": "<en, fr, ar, or darija>"
+    }
   `;
 
   try {
-    // ✅ NEW WAY: Let the client handle the fetch logic!
-    const rawIntent = await callAI(prompt);
+    const rawResponse = await callAI(prompt);
     
-    // Clean it up just in case the AI adds a space or capital letter
-    const intent = rawIntent.trim().toLowerCase();
+    // Clean and parse the JSON response
+    const parsed = JSON.parse(rawResponse.trim());
+    
+    const intent = parsed.intent ? parsed.intent.toLowerCase() : 'unknown';
+    const detectedLanguage = parsed.detectedLanguage || language;
 
     // Validate that the returned intent is one of our expected categories
     const validIntents = ['faq', 'handover', 'booking', 'review', 'unknown'];
-    return validIntents.includes(intent) ? intent : 'unknown';
+    const finalIntent = validIntents.includes(intent) ? intent : 'unknown';
+
+    return {
+      intent: finalIntent,
+      detectedLanguage: detectedLanguage
+    };
 
   } catch (error) {
     console.error("Intent Router Error:", error);
-    return 'unknown'; // Default fallback if the API fails
+    return {
+      intent: 'unknown',
+      detectedLanguage: language // Default fallback to original language
+    };
   }
 }
