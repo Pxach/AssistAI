@@ -17,7 +17,6 @@ export function processBookingRequest(input) {
     const isValidPair = specialistServices.some(
       ss => ss.specialist_id === matchedSpecialist.id && ss.service_id === matchedService.id
     );
-
     if (isValidPair) {
       return formatBookingOutput({
         customer_name,
