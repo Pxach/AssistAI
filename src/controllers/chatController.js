@@ -6,7 +6,8 @@ import { handleFaq } from '../handlers/faqHandler.js';
 import { handleHandover } from '../handlers/handoverHandler.js';
 import { handleBooking } from '../handlers/bookingHandler.js';
 
-export async function processUserMessage(rawInput, language = 'fr', context = {}) { 
+// FIXED: Signature updated to accept senderPhone and botPhone from whatsappGateway.js
+export async function processUserMessage(rawInput, language = 'fr', history = [], bookingState = {}, senderPhone = "", botPhone = "") {
   
   // 1. Interactive Button Interceptor (Bypass AI & Sanitization)
   if (typeof rawInput === 'object' && rawInput.type === 'interactive_button') {
@@ -38,7 +39,7 @@ export async function processUserMessage(rawInput, language = 'fr', context = {}
         data: { 
           reply: reviewReplies.positive[safeLang],
           needsHandover: false,
-          newContext: null 
+          newContext: bookingState 
         }
       };
     } else if (buttonId === 'REVIEW_SCORE_3' || buttonId === 'REVIEW_SCORE_1') {
@@ -48,7 +49,7 @@ export async function processUserMessage(rawInput, language = 'fr', context = {}
         data: { 
           reply: reviewReplies.critical[safeLang],
           needsHandover: false,
-          newContext: null 
+          newContext: bookingState 
         }
       };
     }
@@ -61,7 +62,7 @@ export async function processUserMessage(rawInput, language = 'fr', context = {}
     return {
       status: 'error',
       metadata: { intent: 'unknown', language },
-      data: { reply: "Format non reconnu.", needsHandover: false, newContext: context }
+      data: { reply: "Format non reconnu.", needsHandover: false, newContext: bookingState }
     };
   }
 
@@ -87,7 +88,7 @@ export async function processUserMessage(rawInput, language = 'fr', context = {}
       data: {
         reply: securityFallbackReplies[activeLang],
         needsHandover: false,
-        newContext: null
+        newContext: bookingState
       }
     };
   }
@@ -95,11 +96,20 @@ export async function processUserMessage(rawInput, language = 'fr', context = {}
   const cleanText = securityResult.cleanText;
 
   // 4. Intent Routing
-  const routerResponse = await routeIntent(cleanText, language, context);
+  const routerResponse = await routeIntent(cleanText, language, bookingState, history);
 
-  // Handle both string (old) and object (new) responses gracefully
   const aiIntent = typeof routerResponse === 'string' ? routerResponse : routerResponse.intent;
-  const aiDetectedLang = typeof routerResponse === 'object' ? routerResponse.detectedLanguage : language; // Default to current language if not detected
+  let aiDetectedLang = typeof routerResponse === 'object' ? routerResponse.detectedLanguage : language;
+  const aiHandoverReason = typeof routerResponse === 'object' ? routerResponse.handoverReason : "";
+
+  // SMART STICKY LANGUAGE LOCK:
+  // If we are booking, prevent English/French terms (like "Brand Consultation") from overwriting Darija/Arabic.
+  // But ALLOW the system to naturally transition from Arabic to Darija if the user starts speaking Darija.
+  if (aiIntent === 'booking' || (bookingState && bookingState.status === 'pending')) {
+      if ((aiDetectedLang === 'en' || aiDetectedLang === 'fr') && (language === 'darija' || language === 'ar')) {
+          aiDetectedLang = language; // Block the English/French hijack
+      }
+  }
 
   const activeLang = aiDetectedLang || language;
 
@@ -108,15 +118,16 @@ export async function processUserMessage(rawInput, language = 'fr', context = {}
   
   switch (aiIntent) {
     case 'faq':
-      handlerResult = await handleFaq(cleanText, activeLang, context);
+      handlerResult = await handleFaq(cleanText, activeLang, bookingState);
       break;
       
     case 'handover':
-      handlerResult = await handleHandover(cleanText, activeLang, context);
+      handlerResult = await handleHandover(cleanText, activeLang, bookingState);
       break;
 
     case 'booking': 
-      handlerResult = await handleBooking(cleanText, activeLang, context);
+      // FIXED: Passed bookingState, history, senderPhone, AND botPhone to the booking handler
+      handlerResult = await handleBooking(cleanText, activeLang, bookingState, history, senderPhone, botPhone);
       break;
 
     case 'unknown':
@@ -130,20 +141,21 @@ export async function processUserMessage(rawInput, language = 'fr', context = {}
       handlerResult = {
         reply: unknownReplies[activeLang] || unknownReplies['fr'],
         needsHandover: false,
-        newContext: context
+        newContext: bookingState
       };
       break;
     }
   }
 
-  // 6. Return the final structured response
-    return {
-      status: 'success',
-      metadata: {
-        intent: aiIntent,
-        language: activeLang,
-        detectedLanguage: aiDetectedLang
-      },
-      data: handlerResult
-    };
+  // 6. Return structured response back to Gateway
+  return {
+    status: 'success',
+    metadata: {
+      intent: aiIntent,
+      language: activeLang,
+      detectedLanguage: aiDetectedLang,
+      handoverReason: aiHandoverReason
+    },
+    data: handlerResult
+  };
 }

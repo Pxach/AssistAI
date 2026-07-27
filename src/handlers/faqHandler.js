@@ -16,7 +16,9 @@ export async function handleFaq(message, language, context) {
 
     User Question: "${message}"
     Requested Language: "${language}"
-
+    Rules:
+    STRICT TONE RULE: DO NOT start your responses with greetings (like "Ahlan", "Salam", "Hello", "Welcome") UNLESS the conversation history is completely empty. If there is already a conversation history, jump straight into your answer.
+    
     INSTRUCTIONS:
     - If the answer IS in the Knowledge Base, write a natural, friendly reply answering the question in the Requested Language.
     - If the answer IS NOT in the Knowledge Base, or if it requires information not provided, you must reply with EXACTLY this word and nothing else: NO_ANSWER_FOUND

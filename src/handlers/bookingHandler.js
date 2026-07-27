@@ -1,22 +1,27 @@
 // src/handlers/bookingHandler.js
 import { callAI } from '../services/ai/llmClient.js';
-const companyCatalog = {
-  services: [
-    { id: 1, name: "Database Optimization", department: "it", duration: 60 },
-    { id: 2, name: "Server Configuration", department: "it", duration: 120 },
-    { id: 3, name: "UI/UX Review", department: "design", duration: 45 },
-    { id: 4, name: "Brand Consultation", department: "marketing", duration: 30 }
-  ],
-  specialists: [
-    { id: 101, name: "Sarah", department: "it", services: [1, 2] },
-    { id: 102, name: "Alex", department: "it", services: [1] },
-    { id: 103, name: "Karim", department: "design", services: [3] }
-  ]
-};
 
-export async function handleBooking(message, language, context = {}) {
-  // 1. Initialize State (Added user_confirmed flag)
-  let currentBookingState = context.bookingState || {
+// 🚀 DATABASE MOCK FUNCTION (Future-Proofed)
+async function fetchCompanyCatalogFromDB() {
+  return {
+    services: [
+      { id: 1, name: "Database Optimization", department: "it", duration: 60 },
+      { id: 2, name: "Server Configuration", department: "it", duration: 120 },
+      { id: 3, name: "UI/UX Review", department: "design", duration: 45 },
+      { id: 4, name: "Brand Consultation", department: "marketing", duration: 30 }
+    ],
+    specialists: [
+      { id: 101, name: "Sarah", department: "it", services: [1, 2] },
+      { id: 102, name: "Alex", department: "it", services: [1, 4] }, // FIXED: Alex now handles Service 4!
+      { id: 103, name: "Karim", department: "design", services: [3] }
+    ]
+  };
+}
+
+// FIXED: Added botPhone as the 6th parameter
+export async function handleBooking(message, language, bookingState = {}, history = [], senderPhone = "", botPhone = "") {
+  // 1. Initialize State (Merged with server memory)
+  let currentBookingState = {
     customer_name: null,
     contact_info: null,
     department: null,
@@ -25,37 +30,86 @@ export async function handleBooking(message, language, context = {}) {
     appointment_date: null,
     appointment_time: null,
     status: "pending",
-    user_confirmed: false // NEW FLAG
+    user_confirmed: false,
+    ...bookingState 
   };
 
   const today = new Date().toISOString().split('T')[0];
+  const liveCatalog = await fetchCompanyCatalogFromDB();
 
   // 2. Extract Entities
   const prompt = `
-    You are an AI data extractor for a booking system. 
+    You are a SILENT AI data extractor for a booking system. 
     Analyze the User's Message and update the Current State.
     
     Today's Date is: ${today}
-    Current State: ${JSON.stringify(currentBookingState)}
+    USER'S WHATSAPP PHONE NUMBER: "${senderPhone}"
+    BUSINESS/BOT PHONE NUMBER: "${botPhone}"
+    ACTIVE CONVERSATION LANGUAGE: "${language}"
+
+    CRITICAL LANGUAGE LOCK:
+    You MUST generate 'ai_direct_reply' strictly in the ACTIVE CONVERSATION LANGUAGE ("${language}"). 
+    - If the language is 'darija', use Moroccan Arabic written in Latin letters (e.g., "Nhar w w9t..."). It is FORBIDDEN to use French when 'darija' is active.
+
+    AVAILABLE CATALOG (Services & Specialists with mapped service IDs):
+    ${JSON.stringify(liveCatalog)}
+
+    CONVERSATION HISTORY:
+    ${history.map(item => `${item.role}: ${item.parts[0].text}`).join("\n")}
+    
+    CURRENT BOOKING STATE: 
+    ${JSON.stringify(currentBookingState)}
+    
     User's Message: "${message}"
 
-    Rules:
+    Rules & Validations:
     - Update the JSON with any new information provided.
-    - If the user mentions a relative time (e.g., "demain"), calculate the exact YYYY-MM-DD date.
-    - IF the user confirms the final details (e.g., "yes", "oui", "parfait", "looks good"), set "user_confirmed" to true.
-    - IF the user corrects a detail (e.g., "change the time to 4 PM"), update that field and ensure "user_confirmed" remains false.
-    - Respond strictly with valid JSON only.
+    - SPECIALIST VALIDATION & "FIRST AVAILABLE": Check the AVAILABLE CATALOG mapping. If a user asks for "first available", pick a specialist whose 'services' array contains the requested service ID. 
+    - SPECIALIST REJECTION: If a user rejects a specialist, check if anyone else provides that service. If NO ONE else is available for that service, keep 'specialist_name' as null and explicitly tell the user in 'ai_direct_reply' that this specialist is the only one who handles this service.
+    - SPLIT DATE & TIME: Extract 'appointment_date' (YYYY-MM-DD) first. Do NOT extract an appointment time unless the user specifies a precise hour. 
+    - STRICT TIME RULE: Vague time words (like "morning", "afternoon", "sbah", "lil") are NOT valid appointment times. Keep 'appointment_time' as null until an exact hour is given.
+    - SENDER PHONE RESOLUTION: If the user refers to their current chat line ("this number", "my number"), extract their actual phone number ("${senderPhone}") into 'contact_info'.
+    - STRICT CONTACT FORMAT & TROLL PROTECTION: 'contact_info' MUST be perfectly formatted. 
+      * For Phone: Only numbers, optional spaces, and an optional leading '+'. Reject obvious fake numbers (e.g., 12345678) AND the business's own phone number ("${botPhone}").
+      * For Email: MUST contain EXACTLY ONE '@' symbol, and end with a valid domain. Do NOT accept multiple '@' symbols. 
+      * If invalid, keep 'contact_info' as null and use 'ai_direct_reply' to politely ask for a real format.
+    - STRICT CONFIRMATION RULE: ONLY set "user_confirmed" to true IF the user is explicitly confirming the FINAL summary of all their details. Do NOT set it to true if they are just saying "yes" or "oui" in the middle of the conversation. If ANY of the core fields (customer_name, contact_info, appointment_date, appointment_time) are null, "user_confirmed" MUST remain false.
+    - IF the user corrects a detail, update that field and ensure "user_confirmed" remains false.
+    - STRICT TONE RULE: DO NOT start your responses with greetings (like "Ahlan", "Salam") if conversation history exists.
+    
+    JSON STATE CARRYOVER (STRICT): 
+    - You are acting as a state machine. If a field is already filled, assume it is locked in. Copy that exact value into your current JSON response.
+    - NEVER leave 'service_requested' empty if it was already established.
+    - NEVER extract generic conversational words ('dispo', 'yes', 'specialist', 'awl whd', 'oui') as a 'service_requested'.
+    
+    Q&A & DYNAMIC REPLIES (STRICT RULES):
+    - YOU ARE NOT A CHATBOT. Do not ask the user for missing booking info.
+    - ONLY populate the 'ai_direct_reply' field IF the user explicitly asks a direct question OR if a validation error occurs.
+    - CATALOG FORMATTING RULE: When a user asks what services are available, you MUST explicitly pair each service with the specialists who provide it, reading the ID mappings from the catalog. Formulate this STRICTLY in the ACTIVE CONVERSATION LANGUAGE.
+
+    Respond strictly with a valid JSON object matching EXACTLY this schema:
+    {
+      "customer_name": "<string or null>",
+      "contact_info": "<valid phone/email string or null>",
+      "specialist_name": "<string or null>",
+      "service_requested": "<string or null>",
+      "appointment_date": "<YYYY-MM-DD or null>",
+      "appointment_time": "<exact time string or null>",
+      "user_confirmed": <boolean true or false>,
+      "ai_direct_reply": "<string for warnings/Q&A, or null>"
+    }
   `;
 
   try {
-    // ✅ NEW WAY: Call the client and tell it we strictly need JSON format back
     const rawAiText = await callAI(prompt, { jsonMode: true });
-    
-    // Parse the JSON string returned by the client
     const extractedData = JSON.parse(rawAiText);
     
-    // Merge the extracted data into our state
-    currentBookingState = { ...currentBookingState, ...extractedData };
+    const { ai_direct_reply, ...stateData } = extractedData;
+    currentBookingState = { ...currentBookingState, ...stateData };
+    
+    if (ai_direct_reply) {
+      currentBookingState._temp_reply = ai_direct_reply;
+    }
 
   } catch (error) {
     console.error("Booking Extraction Error:", error);
@@ -84,11 +138,17 @@ export async function handleBooking(message, language, context = {}) {
       ar: `هل ترغب في تحديد موعد لـ ${currentBookingState.service_requested} مع متخصص معين؟`,
       darija: `Bghiti tbooker had ${currentBookingState.service_requested} m3a chi spécialiste wla n3tik awel wahed dispo?`
     },
-    askDateTime: {
-      fr: `Parfait. À quelle date et à quelle heure aimeriez-vous rencontrer ${currentBookingState.specialist_name || 'notre spécialiste'} ?`,
-      en: `Perfect. What date and time would you like to meet with ${currentBookingState.specialist_name || 'our specialist'}?`,
-      ar: `ممتاز. ما هو التاريخ والوقت الذي ترغب فيه بلقاء ${currentBookingState.specialist_name || 'المتخصص'}؟`,
-      darija: `Mezyan. Inna nhar w w9t bghiti ttlaqa m3a ${currentBookingState.specialist_name || 'spécialiste dyalna'}?`
+    askDate: {
+      fr: `Parfait. À quelle date aimeriez-vous planifier votre ${currentBookingState.service_requested} ?`,
+      en: `Perfect. What date would you like to schedule your ${currentBookingState.service_requested}?`,
+      ar: `ممتاز. في أي تاريخ ترغب في تحديد موعدك؟`,
+      darija: `Mezyan. Inna nhar bghiti tdir had l-rendezvous?`
+    },
+    askTime: {
+      fr: "À quelle heure précise souhaitez-vous fixer le rendez-vous ?",
+      en: "At what exact time would you like to schedule the appointment?",
+      ar: "في اي ساعة تحديداً ترغب في تحديد الموعد؟",
+      darija: "F w9t bghiti tdir l-rendezvous? (3tini ssa3a bdabt)"
     },
     askName: {
       fr: "Presque terminé ! Quel est votre nom complet pour la réservation ?",
@@ -97,10 +157,10 @@ export async function handleBooking(message, language, context = {}) {
       darija: "B9a lina shwiya! Chno smaytek lkamla 3la 9bel la réservation?"
     },
     askContact: {
-      fr: "Quel est votre numéro de téléphone ou adresse e-mail pour vous envoyer la confirmation ?",
-      en: "What is your phone number or email address so we can send the confirmation?",
-      ar: "ما هو رقم هاتفك أو بريدك الإلكتروني لإرسال التأكيد؟",
-      darija: "Chno nemra dyal tlfoun wla l'email dyalek bach nsifto lik confirmation?"
+      fr: "Quel est votre numéro de téléphone valide ou votre adresse e-mail pour vous envoyer la confirmation ?",
+      en: "What is a valid phone number or email address so we can send the confirmation?",
+      ar: "ما هو رقم هاتفك الصحيح أو بريدك الإلكتروني لإرسال التأكيد؟",
+      darija: "3tini nemra d tlfoun s7i7a wla email bach nsifto lik confirmation."
     },
     askConfirmation: { 
       fr: `Voici un récapitulatif :\n- Service : ${currentBookingState.service_requested}\n- Spécialiste : ${currentBookingState.specialist_name}\n- Date & Heure : ${currentBookingState.appointment_date} à ${currentBookingState.appointment_time}\n- Nom : ${currentBookingState.customer_name}\n- Contact : ${currentBookingState.contact_info}\n\nEst-ce que tout est correct ?`,
@@ -116,19 +176,22 @@ export async function handleBooking(message, language, context = {}) {
     }
   };
 
-  if (!currentBookingState.service_requested) botReply = replies.askService[lang] || replies.askService['fr'];
+  // 🚀 THE MAGIC OVERRIDE
+  if (currentBookingState._temp_reply) {
+    botReply = currentBookingState._temp_reply;
+    delete currentBookingState._temp_reply;
+  }
+  else if (!currentBookingState.service_requested) botReply = replies.askService[lang] || replies.askService['fr'];
   else if (!currentBookingState.specialist_name) botReply = replies.askSpecialist[lang] || replies.askSpecialist['fr'];
-  else if (!currentBookingState.appointment_date || !currentBookingState.appointment_time) botReply = replies.askDateTime[lang] || replies.askDateTime['fr'];
+  else if (!currentBookingState.appointment_date) botReply = replies.askDate[lang] || replies.askDate['fr'];
+  else if (!currentBookingState.appointment_time) botReply = replies.askTime[lang] || replies.askTime['fr'];
   else if (!currentBookingState.customer_name) botReply = replies.askName[lang] || replies.askName['fr'];
   else if (!currentBookingState.contact_info) botReply = replies.askContact[lang] || replies.askContact['fr'];
   else if (!currentBookingState.user_confirmed) botReply = replies.askConfirmation[lang] || replies.askConfirmation['fr'];
   else {
-    // Everything is filled AND confirmed by the user!
     currentBookingState.status = "confirmed";
     isComplete = true;
     botReply = replies.finalConfirm[lang] || replies.finalConfirm['fr'];
-    
-    // TODO (Future): Add the PostgreSQL insertion query here. This is where it becomes permanent.
   }
 
   return {

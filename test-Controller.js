@@ -3,9 +3,6 @@ import 'dotenv/config';
 import { processUserMessage } from './src/controllers/chatController.js';
 
 async function runMultilingualReviewTest() {
-  console.log("==================================================");
-  console.log(" 🌍 TESTING MULTILINGUAL WHATSAPP REVIEW BUTTONS  ");
-  console.log("==================================================\n");
 
   const testCases = [
     {

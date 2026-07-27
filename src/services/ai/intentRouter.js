@@ -1,63 +1,63 @@
-// src/routers/intentRouter.js
+// src/services/ai/intentRouter.js
 import { callAI } from './llmClient.js';
 
-/**
- * Routes the user's intent, utilizing short-term context to handle conversational flow.
- */
-export async function routeIntent(message, language, context = {}) {
-  // Extract the AI's previous message if it exists in the session memory
-  const lastAiMessage = context.lastAiMessage || "None";
+export async function routeIntent(text, language, bookingState, history) {
+  const today = new Date().toISOString().split('T')[0];
+  
+  const lastAiMessage = history.length > 0 && history[history.length - 1].role === 'model' 
+    ? history[history.length - 1].parts[0].text 
+    : "";
 
   const prompt = `
     You are an intent classification router for a customer service AI.
     Analyze the user's message and categorize it into EXACTLY ONE of the following intents:
-    - faq (general questions about hours, location, services, etc.)
+    - faq (general questions, greetings like salam/hello/hi, or questions about hours, location, policies)
     - handover (asking for a human, manager, or saying yes to a transfer offer)
-    - booking (asking to schedule, OR answering booking follow-up questions like names, dates, or specialists)
+    - booking (asking to schedule, OR answering booking follow-up questions, OR asking what services/specialists are available during a booking)
     - review (leaving feedback, rating, or complaint)
     - unknown (anything else)
+    
+    Today's Date is: ${today}
+
+    CONVERSATION HISTORY:
+    ${history.map(item => `${item.role}: ${item.parts[0].text}`).join("\n")}
+
+    CURRENT BOOKING STATE:
+    ${JSON.stringify(bookingState)}
 
     SHORT-TERM CONTEXT:
     AI's Last Message: "${lastAiMessage}"
-    User's Current Message: "${message}"
+    User's Current Message: "${text}"
 
-    STRICT CONTEXT RULES:
-    1. ONGOING BOOKING: If the AI's Last Message is asking for a specialist, date, time, name, or contact info, OR asking to confirm final details, you MUST classify the User's Message as 'booking'.
+    STRICT CONTEXT RULES (THE BOOKING LOCK):
+    1. ONGOING BOOKING: If the AI's Last Message is asking the user to choose a SERVICE, SPECIALIST, DATE, TIME, NAME, or CONTACT INFO, you MUST classify the User's Message as 'booking'. This applies EVEN IF the user replies with a question (e.g., "what services do you have?" or "who is available?"). Do NOT route to 'faq' if they are mid-booking.
     2. HANDOVER AGREEMENT: IF the AI's Last Message explicitly offered a human agent AND the user agrees (yes, oui, ok), you MUST classify as 'handover'.
     3. ORPHAN AGREEMENT: IF the AI's Last Message is unrelated to an agent, and the user just says an agreement word out of nowhere, classify as 'unknown'.
 
     CRITICAL RULE: You must detect the language of the user's input. The possible output languages are 'en' (English), 'fr' (French), 'ar' (Arabic), or 'darija' (Moroccan Darija).
+    LANGUAGE DETECTION RULE: Do NOT change the detected language based on acronyms (like 'UI/UX'), single words (like 'Yes' or 'Ui'), or short ambiguous phrases. Only update the detected language if the user types a clear, multi-word sentence in a different language. Otherwise, maintain the current conversational language.
 
     Respond with ONLY a raw JSON object (no Markdown formatting, no code blocks) with this exact schema:
     {
       "intent": "<classified_intent_string>",
-      "detectedLanguage": "<en, fr, ar, or darija>"
+      "detectedLanguage": "<en, fr, ar, or darija>",
+      "handoverReason": "<brief_summary_or_empty>"
     }
+
+    ADDITIONAL INSTRUCTION:
+    If you classify the intent as 'handover', you MUST analyze the previous conversation history to determine the actual root cause of the user's issue. Do NOT just say 'User requested handover'.
   `;
 
   try {
-    const rawResponse = await callAI(prompt);
-    
-    // Clean and parse the JSON response
-    const parsed = JSON.parse(rawResponse.trim());
-    
-    const intent = parsed.intent ? parsed.intent.toLowerCase() : 'unknown';
-    const detectedLanguage = parsed.detectedLanguage || language;
-
-    // Validate that the returned intent is one of our expected categories
-    const validIntents = ['faq', 'handover', 'booking', 'review', 'unknown'];
-    const finalIntent = validIntents.includes(intent) ? intent : 'unknown';
-
-    return {
-      intent: finalIntent,
-      detectedLanguage: detectedLanguage
-    };
-
+    const rawAiText = await callAI(prompt, { jsonMode: true });
+    const result = JSON.parse(rawAiText);
+    return result;
   } catch (error) {
     console.error("Intent Router Error:", error);
     return {
       intent: 'unknown',
-      detectedLanguage: language // Default fallback to original language
+      detectedLanguage: language,
+      handoverReason: ''
     };
   }
 }
