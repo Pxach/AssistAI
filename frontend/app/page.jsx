@@ -49,6 +49,7 @@ export default function AuthPage() {
         // --- LOG IN SUCCESS ---
         if (data.token) {
           localStorage.setItem('token', data.token);
+          localStorage.setItem('email', formData.email);
         }
         console.log('Logged in successfully:', data);
         window.location.href = '/dashboard';

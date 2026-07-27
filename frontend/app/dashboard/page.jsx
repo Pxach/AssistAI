@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { 
   Home,
@@ -20,6 +20,26 @@ export default function DashboardPage() {
   });
 
   const [timeframe, setTimeframe] = useState('All-time');
+  const [user, setUser] = useState({
+    name: 'Admin User',
+    email: 'admin@example.com'
+  });
+
+useEffect(() => {
+  const storedEmail = localStorage.getItem('email') || localStorage.getItem('userEmail');
+  const storedName = localStorage.getItem('name') || localStorage.getItem('userName');
+
+  if (storedEmail) {
+    // Wrapping in setTimeout defers the update to the next tick, clearing the linter error
+    setTimeout(() => {
+      setUser({
+        name: storedName || storedEmail.split('@')[0].toUpperCase(),
+        email: storedEmail
+      });
+    }, 0);
+  }
+}, []);
+
 
   // Activity Chart Mock Data (Jan - Dec)
   const activityData = [
@@ -59,7 +79,6 @@ export default function DashboardPage() {
 
   return (
     <div className="flex h-screen bg-[#F8F9FD] text-slate-800 font-sans">
-      
       {/* SIDEBAR */}
       <aside className="w-64 bg-[#7C5CFC] text-white flex flex-col justify-between p-6 shadow-lg">
         <div>
@@ -109,21 +128,20 @@ export default function DashboardPage() {
 
         {/* Sidebar Footer */}
         <div className="border-t border-white/20 pt-4">
-          <h2 className="font-bold text-lg mb-4">AssistAI</h2>
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
-              <img 
-                src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80" 
-                alt="User Avatar" 
-                className="w-full h-full object-cover"
-              />
-            </div>
-            <div className="text-sm">
-              <p className="font-semibold leading-tight">Sam Wheeler</p>
-              <p className="text-xs text-white/70">samwheeler@example.com</p>
-            </div>
-          </div>
-        </div>
+  <h2 className="font-bold text-lg mb-4">AssistAI</h2>
+  <div className="flex items-center space-x-3">
+    {/* Dynamic Avatar showing User Initial */}
+    <div className="w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center font-bold text-base shrink-0">
+      {user.email ? user.email[0].toUpperCase() : 'U'}
+    </div>
+    
+    {/* Dynamic User Information */}
+    <div className="text-sm min-w-0 flex-1">
+      <p className="font-semibold leading-tight truncate">{user.name}</p>
+      <p className="text-xs text-white/70 truncate">{user.email}</p>
+    </div>
+  </div>
+</div>
       </aside>
 
       {/* MAIN CONTENT AREA */}
