@@ -20,42 +20,105 @@ export default function DashboardPage() {
   });
 
   const [timeframe, setTimeframe] = useState('All-time');
+  
+  // State for chart data (dynamically adjusted based on timeframe)
+  const [chartData, setChartData] = useState([
+    { label: '2023', val: 150 },
+    { label: '2024', val: 280 },
+    { label: '2025', val: 310 },
+    { label: '2026', val: 380 },
+  ]);
+
   const [user, setUser] = useState({
     name: 'Admin User',
     email: 'admin@example.com'
   });
 
-useEffect(() => {
-  const storedEmail = localStorage.getItem('email') || localStorage.getItem('userEmail');
-  const storedName = localStorage.getItem('name') || localStorage.getItem('userName');
+  useEffect(() => {
+    const storedEmail = localStorage.getItem('email') || localStorage.getItem('userEmail');
+    const storedName = localStorage.getItem('name') || localStorage.getItem('userName');
 
-  if (storedEmail) {
-    // Wrapping in setTimeout defers the update to the next tick, clearing the linter error
+    if (storedEmail) {
+      setTimeout(() => {
+        setUser({
+          name: storedName || storedEmail.split('@')[0].toUpperCase(),
+          email: storedEmail
+        });
+      }, 0);
+    }
+  }, []);
+
+  // Dynamically update stats and chart data when timeframe changes
+  useEffect(() => {
     setTimeout(() => {
-      setUser({
-        name: storedName || storedEmail.split('@')[0].toUpperCase(),
-        email: storedEmail
-      });
+      switch (timeframe) {
+        case 'Today':
+          setStats({ totalConversations: 14, totalReviews: 6, totalBookings: 2, alertsToday: 3 });
+          setChartData([
+            { label: '8 AM', val: 2 },
+            { label: '10 AM', val: 5 },
+            { label: '12 PM', val: 12 },
+            { label: '2 PM', val: 8 },
+            { label: '4 PM', val: 15 },
+            { label: '6 PM', val: 9 },
+            { label: '8 PM', val: 4 },
+          ]);
+          break;
+
+        case 'This Week':
+          setStats({ totalConversations: 88, totalReviews: 45, totalBookings: 12, alertsToday: 3 });
+          setChartData([
+            { label: 'MON', val: 12 },
+            { label: 'TUE', val: 19 },
+            { label: 'WED', val: 15 },
+            { label: 'THU', val: 22 },
+            { label: 'FRI', val: 28 },
+            { label: 'SAT', val: 10 },
+            { label: 'SUN', val: 5 },
+          ]);
+          break;
+
+        case 'This Month':
+          setStats({ totalConversations: 240, totalReviews: 130, totalBookings: 35, alertsToday: 3 });
+          setChartData([
+            { label: 'Week 1', val: 50 },
+            { label: 'Week 2', val: 65 },
+            { label: 'Week 3', val: 80 },
+            { label: 'Week 4', val: 45 },
+          ]);
+          break;
+
+        case 'This Year':
+          setStats({ totalConversations: 320, totalReviews: 185, totalBookings: 49, alertsToday: 3 });
+          setChartData([
+            { label: 'JAN', val: 100 },
+            { label: 'FEB', val: 140 },
+            { label: 'MAR', val: 140 },
+            { label: 'APR', val: 240 },
+            { label: 'MAY', val: 270 },
+            { label: 'JUN', val: 200 },
+            { label: 'JUL', val: 240 },
+            { label: 'AUG', val: 100 },
+            { label: 'SEP', val: 270 },
+            { label: 'OCT', val: 340 },
+            { label: 'NOV', val: 360 },
+            { label: 'DEC', val: 380 },
+          ]);
+          break;
+
+        case 'All-time':
+        default:
+          setStats({ totalConversations: 350, totalReviews: 200, totalBookings: 54, alertsToday: 3 });
+          setChartData([
+            { label: '2023', val: 150 },
+            { label: '2024', val: 280 },
+            { label: '2025', val: 310 },
+            { label: '2026', val: 380 },
+          ]);
+          break;
+      }
     }, 0);
-  }
-}, []);
-
-
-  // Activity Chart Mock Data (Jan - Dec)
-  const activityData = [
-    { month: 'JAN', val: 100 },
-    { month: 'FEB', val: 140 },
-    { month: 'MAR', val: 140 },
-    { month: 'APR', val: 240 },
-    { month: 'MAY', val: 270 },
-    { month: 'JUN', val: 200 },
-    { month: 'JUL', val: 240 },
-    { month: 'AUG', val: 100 },
-    { month: 'SEP', val: 270 },
-    { month: 'OCT', val: 340 },
-    { month: 'NOV', val: 360 },
-    { month: 'DEC', val: 380 },
-  ];
+  }, [timeframe]);
 
   const handleCsvDownload = async () => {
     try {
@@ -76,6 +139,9 @@ useEffect(() => {
       console.error('CSV Export Failed:', err);
     }
   };
+
+  // Calculate dynamic maximum value to relative scale bar heights correctly
+  const maxVal = Math.max(...chartData.map((d) => d.val), 1);
 
   return (
     <div className="flex h-screen bg-[#F8F9FD] text-slate-800 font-sans">
@@ -128,31 +194,41 @@ useEffect(() => {
 
         {/* Sidebar Footer */}
         <div className="border-t border-white/20 pt-4">
-  <h2 className="font-bold text-lg mb-4">AssistAI</h2>
-  <div className="flex items-center space-x-3">
-    {/* Dynamic Avatar showing User Initial */}
-    <div className="w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center font-bold text-base shrink-0">
-      {user.email ? user.email[0].toUpperCase() : 'U'}
-    </div>
-    
-    {/* Dynamic User Information */}
-    <div className="text-sm min-w-0 flex-1">
-      <p className="font-semibold leading-tight truncate">{user.name}</p>
-      <p className="text-xs text-white/70 truncate">{user.email}</p>
-    </div>
-  </div>
-</div>
+          <h2 className="font-bold text-lg mb-4">AssistAI</h2>
+          <div className="flex items-center space-x-3">
+            {/* Dynamic Avatar showing User Initial */}
+            <div className="w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center font-bold text-base shrink-0">
+              {user.email ? user.email[0].toUpperCase() : 'U'}
+            </div>
+            
+            {/* Dynamic User Information */}
+            <div className="text-sm min-w-0 flex-1">
+              <p className="font-semibold leading-tight truncate">{user.name}</p>
+              <p className="text-xs text-white/70 truncate">{user.email}</p>
+            </div>
+          </div>
+        </div>
       </aside>
 
       {/* MAIN CONTENT AREA */}
       <main className="flex-1 overflow-y-auto p-8">
         <h1 className="text-2xl font-bold mb-6 text-slate-900">Home Page</h1>
 
-        {/* Timeframe Selector */}
+        {/* SINGLE GLOBAL TIMEFRAME DROPDOWN */}
         <div className="mb-6 inline-block">
-          <div className="flex items-center bg-white border border-slate-200 rounded-full px-4 py-2 text-sm text-slate-600 shadow-sm cursor-pointer">
-            <span>Timeframe: <strong>{timeframe}</strong></span>
-            <ChevronDown className="w-4 h-4 ml-2 text-slate-400" />
+          <div className="relative inline-flex items-center">
+            <select
+              value={timeframe}
+              onChange={(e) => setTimeframe(e.target.value)}
+              className="appearance-none bg-white border border-slate-200 rounded-full pl-4 pr-9 py-2 text-sm text-slate-600 shadow-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#7C5CFC]/30 font-medium"
+            >
+              <option value="All-time">Timeframe: All-time</option>
+              <option value="This Year">Timeframe: This Year</option>
+              <option value="This Month">Timeframe: This Month</option>
+              <option value="This Week">Timeframe: This Week</option>
+              <option value="Today">Timeframe: Today</option>
+            </select>
+            <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 pointer-events-none" />
           </div>
         </div>
 
@@ -186,28 +262,25 @@ useEffect(() => {
           <div className="lg:col-span-7 bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-sm font-semibold text-slate-700">Activity</h3>
-              <div className="flex items-center text-xs text-slate-500 cursor-pointer">
-                <span>Month</span>
-                <ChevronDown className="w-3 h-3 ml-1" />
-              </div>
             </div>
 
-            {/* Custom Bar Chart */}
+            {/* Dynamic Custom Bar Chart */}
             <div className="h-44 flex items-end justify-between gap-2 pt-4 border-b border-slate-100 pb-2">
-              {activityData.map((item, idx) => (
+              {chartData.map((item, idx) => (
                 <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group">
                   <div 
-                    style={{ height: `${(item.val / 400) * 100}%` }}
+                    style={{ height: `${(item.val / maxVal) * 100}%` }}
                     className="w-2.5 bg-[#4B70F5] rounded-full transition-all duration-300 group-hover:bg-[#7C5CFC]"
+                    title={`${item.label}: ${item.val}`}
                   ></div>
                 </div>
               ))}
             </div>
 
-            {/* X-Axis Month Labels */}
+            {/* Dynamic X-Axis Labels */}
             <div className="flex justify-between text-[10px] text-slate-400 font-medium mt-2">
-              {activityData.map((item, idx) => (
-                <span key={idx} className="flex-1 text-center">{item.month}</span>
+              {chartData.map((item, idx) => (
+                <span key={idx} className="flex-1 text-center truncate px-0.5">{item.label}</span>
               ))}
             </div>
           </div>
