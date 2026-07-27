@@ -9,6 +9,8 @@ import {
   Loader2,
   Home
 } from 'lucide-react';
+import Link from 'next/link';
+
 
 export default function BookingAnalyticsPage() {
   const [stats, setStats] = useState({
@@ -103,25 +105,42 @@ export default function BookingAnalyticsPage() {
     <div className="flex h-screen bg-[#F8F9FD] text-slate-800 font-sans overflow-hidden">
       
       {/* SIDEBAR */}
-      <aside className="w-64 bg-[#7C5CFC] text-white flex flex-col justify-between p-6 shadow-lg shrink-0">
+      <aside className="w-64 bg-[#7C5CFC] text-white flex flex-col justify-between p-6 shadow-lg">
         <div>
+          {/* Navigation Links */}
           <nav className="space-y-6 mt-6">
-            <button className="flex items-center space-x-3 w-full text-left font-medium hover:opacity-80 transition">
+            <Link 
+              href="/dashboard" 
+              className="flex items-center space-x-3 w-full text-left font-medium hover:opacity-80 transition"
+            >
               <Home className="w-5 h-5" />
               <span>Home Page</span>
-            </button>
-            <button className="flex items-center space-x-3 w-full text-left font-medium hover:opacity-80 transition">
+            </Link>
+
+            <Link 
+              href="/chat-analytics" 
+              className="flex items-center space-x-3 w-full text-left font-medium hover:opacity-80 transition"
+            >
               <MessageSquare className="w-5 h-5" />
               <span>Chat Analytics</span>
-            </button>
-            <button className="flex items-center space-x-3 w-full text-left font-medium hover:opacity-80 transition">
+            </Link>
+
+            <Link 
+              href="/review-analytics" 
+              className="flex items-center space-x-3 w-full text-left font-medium hover:opacity-80 transition"
+            >
               <Star className="w-5 h-5" />
               <span>Review Analytics</span>
-            </button>
-            <button className="flex items-center space-x-3 w-full text-left font-medium hover:opacity-80 transition text-white/100 font-bold">
+            </Link>
+
+            <Link 
+              href="/booking-analytics" 
+              className="flex items-center space-x-3 w-full text-left font-medium hover:opacity-80 transition"
+            >
               <Calendar className="w-5 h-5" />
               <span>Booking Analytics</span>
-            </button>
+            </Link>
+
             <button 
               onClick={handleCsvDownload}
               className="flex items-center space-x-3 w-full text-left font-medium hover:opacity-80 transition pt-2"
@@ -134,7 +153,7 @@ export default function BookingAnalyticsPage() {
 
         {/* Sidebar Footer */}
         <div className="border-t border-white/20 pt-4">
-          <p className="text-xs text-white/60 mb-2">Company Logo</p>
+          <h2 className="font-bold text-lg mb-4">AssistAI</h2>
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
               <img 
