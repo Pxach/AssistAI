@@ -1,7 +1,7 @@
-// Mock Store for Admin Users
-let mockAdmins = [];
+import db from '../database/db.js';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 
-// Admin Sign Up (Requires company email)
 export const register = async (req, res) => {
     const { email, password, companyName } = req.body;
 
@@ -12,7 +12,6 @@ export const register = async (req, res) => {
         });
     }
 
-    // Validate company email domain (Reject public free providers)
     const publicDomains = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com'];
     const emailDomain = email.split('@')[1];
 
@@ -23,25 +22,65 @@ export const register = async (req, res) => {
         });
     }
 
-    const newAdmin = {
-        AdminUserID: `admin-${Date.now()}`,
-        CompanyID: `comp-${Date.now()}`,
-        Email: email,
-        CompanyName: companyName,
-        Role: 'admin'
-    };
+    try {
+        const existingAdmin = await db('AdminUser').where({ Email: email }).first();
+        if (existingAdmin) {
+            return res.status(400).json({
+                success: false,
+                message: 'An account with this email address already exists.'
+            });
+        }
 
-    mockAdmins.push({ ...newAdmin, password });
+        const hashedPassword = await bcrypt.hash(password, 10);
+        
+        // Insert into 'Company' table (Name, Email)
+        const [newCompany] = await db('Company')
+            .insert({
+                Name: companyName,
+                Email: email
+            })
+            .returning('*');
 
-    res.status(201).json({
-        success: true,
-        message: 'Company admin account created successfully',
-        token: 'mock-jwt-token-xyz123',
-        user: newAdmin
-    });
+        const companyId = newCompany.CompanyID || newCompany.companyid || newCompany.id;
+
+        // Insert into 'AdminUser' table (CompanyID, Email, Password, Role)
+        const [newAdmin] = await db('AdminUser')
+            .insert({
+                CompanyID: companyId,
+                Email: email,
+                Password: hashedPassword,
+                Role: 'admin'
+            })
+            .returning('*');
+
+        const adminId = newAdmin.AdminUserID || newAdmin.id;
+        const token = jwt.sign(
+            { id: adminId, role: newAdmin.Role },
+            process.env.JWT_SECRET || 'supersecretkey',
+            { expiresIn: '1d' }
+        );
+
+        return res.status(201).json({
+            success: true,
+            message: 'Company admin account created successfully',
+            token,
+            user: {
+                AdminUserID: adminId,
+                CompanyID: companyId,
+                Email: newAdmin.Email,
+                Role: newAdmin.Role
+            }
+        });
+    } catch (error) {
+        console.error('Registration Error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Server error during account creation.',
+            error: error.message
+        });
+    }
 };
 
-// Admin Log In
 export const login = async (req, res) => {
     const { email, password } = req.body;
 
@@ -52,24 +91,49 @@ export const login = async (req, res) => {
         });
     }
 
-    const user = mockAdmins.find(a => a.Email === email && a.password === password);
+    try {
+        const user = await db('AdminUser').where({ Email: email }).first();
 
-    if (!user) {
-        return res.status(401).json({ 
-            success: false, 
-            message: 'Invalid credentials.' 
+        if (!user) {
+            return res.status(401).json({ 
+                success: false, 
+                message: 'Invalid email or password.' 
+            });
+        }
+
+        // Compare password against DB column 'Password'
+        const passwordMatch = await bcrypt.compare(password, user.Password);
+        if (!passwordMatch) {
+            return res.status(401).json({ 
+                success: false, 
+                message: 'Invalid email or password.' 
+            });
+        }
+
+        const adminId = user.AdminUserID || user.id;
+        const token = jwt.sign(
+            { id: adminId, role: user.Role },
+            process.env.JWT_SECRET || 'supersecretkey',
+            { expiresIn: '1d' }
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: 'Login successful',
+            token,
+            user: {
+                AdminUserID: user.AdminUserID,
+                CompanyID: user.CompanyID,
+                Email: user.Email,
+                Role: user.Role
+            }
+        });
+    } catch (error) {
+        console.error('Login Error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Server error during login.',
+            error: error.message
         });
     }
-
-    res.status(200).json({
-        success: true,
-        message: 'Login successful',
-        token: 'mock-jwt-token-xyz123',
-        user: {
-            AdminUserID: user.AdminUserID,
-            CompanyID: user.CompanyID,
-            Email: user.Email,
-            Role: user.Role
-        }
-    });
 };

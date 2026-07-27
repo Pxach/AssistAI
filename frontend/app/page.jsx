@@ -11,6 +11,7 @@ export default function AuthPage() {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -20,21 +21,38 @@ export default function AuthPage() {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setSuccessMessage('');
 
     const endpoint = isSignUp ? '/api/auth/register' : '/api/auth/login';
+
+    // Payload formatted for backend controller
+    const payload = isSignUp
+      ? { companyName: formData.name, email: formData.email, password: formData.password }
+      : { email: formData.email, password: formData.password };
+
     try {
       const res = await fetch(`http://localhost:5000${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Authentication failed');
 
-      // On success, save token and redirect to dashboard
-      console.log('Success:', data);
-      window.location.href = '/dashboard';
+      if (isSignUp) {
+        // --- SIGN UP SUCCESS ---
+        setIsSignUp(false); // Switch to Log In view
+        setSuccessMessage('Account created successfully! Please log in below.');
+        setFormData((prev) => ({ ...prev, password: '' })); // Clear password
+      } else {
+        // --- LOG IN SUCCESS ---
+        if (data.token) {
+          localStorage.setItem('token', data.token);
+        }
+        console.log('Logged in successfully:', data);
+        window.location.href = '/dashboard';
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -59,7 +77,7 @@ export default function AuthPage() {
               <input
                 type="text"
                 name="name"
-                placeholder="Name"
+                placeholder="Company Name"
                 value={formData.name}
                 onChange={handleChange}
                 className="w-full bg-[#cfc2fc]/40 placeholder-white/80 text-white px-5 py-3.5 rounded-2xl outline-none border border-transparent focus:border-white/60 transition-all text-sm"
@@ -70,7 +88,7 @@ export default function AuthPage() {
             <input
               type="email"
               name="email"
-              placeholder="Email"
+              placeholder="Company Email (e.g., admin@techcorp.com)"
               value={formData.email}
               onChange={handleChange}
               className="w-full bg-[#cfc2fc]/40 placeholder-white/80 text-white px-5 py-3.5 rounded-2xl outline-none border border-transparent focus:border-white/60 transition-all text-sm"
@@ -87,6 +105,14 @@ export default function AuthPage() {
               required
             />
 
+            {/* Success Message Banner */}
+            {successMessage && (
+              <p className="text-emerald-200 text-xs text-center font-medium pt-1">
+                {successMessage}
+              </p>
+            )}
+
+            {/* Error Message Banner */}
             {error && (
               <p className="text-red-200 text-xs text-center pt-1">{error}</p>
             )}
@@ -95,7 +121,7 @@ export default function AuthPage() {
             <button
               type="submit"
               disabled={loading}
-              className="mt-2 w-32 bg-black hover:bg-zinc-900 text-white font-medium py-2.5 px-6 rounded-xl transition-all text-sm disabled:opacity-50"
+              className="mt-2 w-32 bg-black hover:bg-zinc-900 text-white font-medium py-2.5 px-6 rounded-xl transition-all text-sm disabled:opacity-50 cursor-pointer"
             >
               {loading ? '...' : isSignUp ? 'Sign Up' : 'Login'}
             </button>
@@ -106,6 +132,7 @@ export default function AuthPage() {
             onClick={() => {
               setIsSignUp(!isSignUp);
               setError('');
+              setSuccessMessage('');
             }}
             className="mt-6 text-xs text-white/90 hover:underline font-normal cursor-pointer"
           >

@@ -1,83 +1,149 @@
 import db from '../database/db.js';
 import { convertToCSV } from '../utils/csvFormatter.js';
 
-// Mock Dashboard Analytics Metrics
+/**
+ * Helper to apply dynamic timeframe filters based on request query params
+ */
+const applyTimeframeFilter = (query, timeframe, dateColumn = 'CreatedAt') => {
+  const getSubtractedDate = (days = 0, months = 0, years = 0) => {
+    const d = new Date();
+    if (days) d.setDate(d.getDate() - days);
+    if (months) d.setMonth(d.getMonth() - months);
+    if (years) d.setFullYear(d.getFullYear() - years);
+    return d;
+  };
+
+  switch (timeframe?.toLowerCase()) {
+    case 'per day':
+    case 'day':
+      return query.where(dateColumn, '>=', getSubtractedDate(1));
+    case 'per week':
+    case 'week':
+      return query.where(dateColumn, '>=', getSubtractedDate(7));
+    case 'per month':
+    case 'month':
+      return query.where(dateColumn, '>=', getSubtractedDate(0, 1));
+    case 'per year':
+    case 'year':
+      return query.where(dateColumn, '>=', getSubtractedDate(0, 0, 1));
+    case 'all-time':
+    default:
+      return query;
+  }
+};
+
+/**
+ * GET /api/dashboard/stats
+ */
 export const getDashboardStats = async (req, res) => {
-    try {
-        res.status(200).json({
-            success: true,
-            data: {
-                overview: {
-                    totalConversations: 128,
-                    totalReviews: 42,
-                    totalBookings: 19,
-                    humanInterventionsNeeded: 3,
-                    window24HourAlerts: 2
-                },
-                reviewMetrics: {
-                    positivePercentage: 81,
-                    negativePercentage: 19,
-                    positiveCount: 34,
-                    negativeCount: 8,
-                    negativeCauseCategories: [
-                        { category: 'Long Response Delay', count: 5 },
-                        { category: 'Wrong Availability Slot', count: 3 }
-                    ]
-                },
-                bookingMetrics: {
-                    bookingsToday: 4,
-                    bookingsThisWeek: 12,
-                    peakBookingHour: '14:00 - 15:00',
-                    peakBookingDay: 'Wednesday'
-                },
-                chatMetrics: {
-                    conversationsPerDay: 18,
-                    chatbotUsefulnessRate: '92%'
-                }
-            }
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fetch dashboard statistics',
-            error: error.message
-        });
-    }
+  try {
+    const { timeframe = 'All-time', chartView = 'month' } = req.query;
+
+    // 1. STAT CARDS CALCULATIONS
+    const conversationsCount = await applyTimeframeFilter(db('ChatLogs'), timeframe, 'CreatedAt')
+      .count('ChatID as count')
+      .first();
+
+    const reviewsCount = await applyTimeframeFilter(db('Review'), timeframe, 'CreatedAt')
+      .count('ReviewID as count')
+      .first();
+
+    const bookingsCount = await applyTimeframeFilter(db('appointments'), timeframe, 'created_at')
+      .count('id as count')
+      .first();
+
+    const alertsTodayCount = await db('ChatSession')
+      .where('Handover', true)
+      .andWhere('CreatedAt', '>=', db.raw('CURRENT_DATE'))
+      .count('PhoneNumber as count')
+      .first();
+
+    // 2. ACTIVITY BAR CHART CALCULATIONS
+    let truncUnit = 'month';
+    if (chartView === 'day') truncUnit = 'day';
+    else if (chartView === 'week') truncUnit = 'week';
+    else if (chartView === 'year') truncUnit = 'year';
+
+    const activityDataRaw = await applyTimeframeFilter(db('ChatLogs'), timeframe, 'CreatedAt')
+      .select(db.raw(`DATE_TRUNC('${truncUnit}', "CreatedAt") as period`), db.raw('COUNT("ChatID")::integer as val'))
+      .groupBy('period')
+      .orderBy('period', 'asc');
+
+    const activityData = activityDataRaw.map((row) => {
+      const date = new Date(row.period);
+      let label = date.toLocaleString('default', { month: 'short' }).toUpperCase();
+      if (truncUnit === 'day') label = `${date.getMonth() + 1}/${date.getDate()}`;
+      if (truncUnit === 'year') label = `${date.getFullYear()}`;
+      return { label, val: row.val };
+    });
+
+    // 3. HUMAN INTERVENTION & DEADLINES
+    const humanInterventions = await db('ChatSession')
+      .leftJoin('Customer', 'ChatSession.PhoneNumber', 'Customer.PhoneNumber')
+      .where('ChatSession.Handover', true)
+      .andWhere('ChatSession.Active', true)
+      .select(
+        'ChatSession.PhoneNumber',
+        'ChatSession.CreatedAt',
+        'Customer.Name as CustomerName'
+      )
+      .orderBy('ChatSession.CreatedAt', 'desc');
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        overview: {
+          totalConversations: parseInt(conversationsCount?.count || 0, 10),
+          totalReviews: parseInt(reviewsCount?.count || 0, 10),
+          totalBookings: parseInt(bookingsCount?.count || 0, 10),
+          alertsToday: parseInt(alertsTodayCount?.count || 0, 10),
+        },
+        activityData,
+        humanInterventions,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching dashboard stats:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch dashboard statistics',
+      error: error.message,
+    });
+  }
 };
 
 /**
  * GET /api/dashboard/export-csv
- * Exports appointment records as a downloadable CSV file.
  */
 export const exportCsv = async (req, res) => {
-    try {
-        const records = await db('appointments')
-            .leftJoin('services', 'appointments.service_id', 'services.id')
-            .leftJoin('specialists', 'appointments.specialist_id', 'specialists.id')
-            .select(
-                'appointments.id',
-                'appointments.customer_name',
-                'appointments.contact_info',
-                'services.name as service_name',
-                'specialists.name as specialist_name',
-                'appointments.appointment_date',
-                'appointments.appointment_time',
-                'appointments.status',
-                'appointments.created_at'
-            );
+  try {
+    const records = await db('appointments')
+      .leftJoin('services', 'appointments.service_id', 'services.id')
+      .leftJoin('specialists', 'appointments.specialist_id', 'specialists.id')
+      .select(
+        'appointments.id',
+        'appointments.customer_name',
+        'appointments.contact_info',
+        'services.name as service_name',
+        'specialists.name as specialist_name',
+        'appointments.appointment_date',
+        'appointments.appointment_time',
+        'appointments.status',
+        'appointments.created_at'
+      );
 
-        const csvData = convertToCSV(records);
+    const csvData = convertToCSV(records);
 
-        res.setHeader('Content-Type', 'text/csv');
-        res.setHeader('Content-Disposition', 'attachment; filename="appointments_export.csv"');
-        
-        return res.status(200).send(csvData);
-    } catch (error) {
-        console.error('Error generating CSV export:', error);
-        return res.status(500).json({
-            success: false,
-            message: 'Failed to generate CSV export',
-            error: error.message
-        });
-    }
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="appointments_export.csv"');
+
+    return res.status(200).send(csvData);
+  } catch (error) {
+    console.error('Error generating CSV export:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to generate CSV export',
+      error: error.message,
+    });
+  }
 };

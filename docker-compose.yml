@@ -7,7 +7,7 @@ services:
     restart: always
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres123
+      POSTGRES_PASSWORD: Letmein
       POSTGRES_DB: assist_ai_db
     ports:
       - "5432:5432"
