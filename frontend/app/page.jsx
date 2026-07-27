@@ -48,8 +48,12 @@ export default function AuthPage() {
       } else {
         // --- LOG IN SUCCESS ---
         if (data.token) {
+          // Store in localStorage for client-side component calls
           localStorage.setItem('token', data.token);
           localStorage.setItem('email', formData.email);
+
+          // Store in document.cookie so Next.js middleware.js can read it on route changes
+          document.cookie = `token=${data.token}; path=/; max-age=86400; SameSite=Lax`;
         }
         console.log('Logged in successfully:', data);
         window.location.href = '/dashboard';
