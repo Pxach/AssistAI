@@ -11,7 +11,6 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 
-
 export default function BookingAnalyticsPage() {
   const [stats, setStats] = useState({
     totalBookingRequests: 0,
@@ -32,26 +31,26 @@ export default function BookingAnalyticsPage() {
 
   const [chartData, setChartData] = useState([]);
   const [timeframe, setTimeframe] = useState('All-time');
-    const [user, setUser] = useState({
+  const [user, setUser] = useState({
     name: 'Admin User',
     email: 'admin@example.com'
   });
-
-useEffect(() => {
-  const storedEmail = localStorage.getItem('email') || localStorage.getItem('userEmail');
-  const storedName = localStorage.getItem('name') || localStorage.getItem('userName');
-
-  if (storedEmail) {
-    // Wrapping in setTimeout defers the update to the next tick, clearing the linter error
-    setTimeout(() => {
-      setUser({
-        name: storedName || storedEmail.split('@')[0].toUpperCase(),
-        email: storedEmail
-      });
-    }, 0);
-  }
-}, []);
   const [loading, setLoading] = useState(true);
+
+  // Safely sync user info from localStorage without triggering cascading render warnings
+  useEffect(() => {
+    const storedEmail = localStorage.getItem('email') || localStorage.getItem('userEmail');
+    const storedName = localStorage.getItem('name') || localStorage.getItem('userName');
+
+    if (storedEmail) {
+      queueMicrotask(() => {
+        setUser({
+          name: storedName || storedEmail.split('@')[0].toUpperCase(),
+          email: storedEmail
+        });
+      });
+    }
+  }, []);
 
   // Fetch Booking Analytics Data from DB
   useEffect(() => {
@@ -69,9 +68,9 @@ useEffect(() => {
         );
         const result = await response.json();
         if (result.success && isMounted) {
-          setStats(result.data.overview);
-          setPieData(result.data.pieChart);
-          setChartData(result.data.chartData);
+          setStats(result.data.overview || {});
+          setPieData(result.data.pieChart || { confirmed: 0, confirmedPct: 0, unconfirmed: 0, unconfirmedPct: 0 });
+          setChartData(result.data.chartData || []);
         }
       } catch (err) {
         console.error('Failed to load booking analytics:', err);
@@ -114,8 +113,8 @@ useEffect(() => {
     }
   };
 
-  const maxChartVal = Math.max(...chartData.map((d) => d.val), 1);
-  const labelStep = Math.max(1, Math.ceil(chartData.length / 12));
+  const maxChartVal = chartData.length > 0 ? Math.max(...chartData.map((d) => d.val), 1) : 1;
+  const labelStep = Math.max(1, Math.ceil((chartData.length || 1) / 12));
 
   // Conic Gradient for Pie Chart SVG calculation
   const confirmedDegree = (pieData.confirmedPct / 100) * 360;
@@ -124,7 +123,7 @@ useEffect(() => {
     <div className="flex h-screen bg-[#F8F9FD] text-slate-800 font-sans overflow-hidden">
       
       {/* SIDEBAR */}
-      <aside className="w-64 bg-[#7C5CFC] text-white flex flex-col justify-between p-6 shadow-lg">
+      <aside className="w-64 bg-[#7C5CFC] text-white flex flex-col justify-between p-6 shadow-lg shrink-0">
         <div>
           {/* Navigation Links */}
           <nav className="space-y-6 mt-6">
@@ -172,20 +171,20 @@ useEffect(() => {
 
         {/* Sidebar Footer */}
         <div className="border-t border-white/20 pt-4">
-  <h2 className="font-bold text-lg mb-4">AssistAI</h2>
-  <div className="flex items-center space-x-3">
-    {/* Dynamic Avatar showing User Initial */}
-    <div className="w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center font-bold text-base shrink-0">
-      {user.email ? user.email[0].toUpperCase() : 'U'}
-    </div>
-    
-    {/* Dynamic User Information */}
-    <div className="text-sm min-w-0 flex-1">
-      <p className="font-semibold leading-tight truncate">{user.name}</p>
-      <p className="text-xs text-white/70 truncate">{user.email}</p>
-    </div>
-  </div>
-</div>
+          <h2 className="font-bold text-lg mb-4">AssistAI</h2>
+          <div className="flex items-center space-x-3">
+            {/* Dynamic Avatar showing User Initial */}
+            <div className="w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center font-bold text-base shrink-0">
+              {user.email ? user.email[0].toUpperCase() : 'U'}
+            </div>
+            
+            {/* Dynamic User Information */}
+            <div className="text-sm min-w-0 flex-1">
+              <p className="font-semibold leading-tight truncate">{user.name}</p>
+              <p className="text-xs text-white/70 truncate">{user.email}</p>
+            </div>
+          </div>
+        </div>
       </aside>
 
       {/* MAIN CONTENT AREA */}
@@ -197,7 +196,7 @@ useEffect(() => {
           {loading && <Loader2 className="w-5 h-5 animate-spin text-[#7C5CFC]" />}
         </div>
 
-        {/* GLOBAL TIMEFRAME SELECTOR (ONLY 1 DROPDOWN) */}
+        {/* GLOBAL TIMEFRAME SELECTOR */}
         <div className="mb-8 inline-block relative">
           <div className="flex items-center bg-white border border-slate-200 rounded-full px-5 py-2.5 text-sm text-slate-600 shadow-sm">
             <span className="mr-2">Timeframe:</span>
@@ -224,43 +223,43 @@ useEffect(() => {
             {/* Card 1 */}
             <div className="bg-[#7C5CFC] text-white p-5 rounded-2xl shadow-sm flex flex-col justify-between h-36">
               <p className="text-xs font-medium text-white/90">Total Booking Requests</p>
-              <p className="text-3xl font-bold">{stats.totalBookingRequests}</p>
+              <p className="text-3xl font-bold">{loading ? '...' : stats.totalBookingRequests}</p>
             </div>
 
             {/* Card 2 */}
             <div className="bg-[#7C5CFC] text-white p-5 rounded-2xl shadow-sm flex flex-col justify-between h-36">
               <p className="text-xs font-medium text-white/90">Total Confirmed Bookings</p>
-              <p className="text-3xl font-bold">{stats.totalConfirmedBookings}</p>
+              <p className="text-3xl font-bold">{loading ? '...' : stats.totalConfirmedBookings}</p>
             </div>
 
             {/* Card 3 */}
             <div className="bg-[#7C5CFC] text-white p-5 rounded-2xl shadow-sm flex flex-col justify-between h-36">
               <p className="text-xs font-medium text-white/90">Total Unconfirmed Bookings</p>
-              <p className="text-3xl font-bold">{stats.totalUnconfirmedBookings}</p>
+              <p className="text-3xl font-bold">{loading ? '...' : stats.totalUnconfirmedBookings}</p>
             </div>
 
             {/* Card 4 */}
             <div className="bg-[#7C5CFC] text-white p-5 rounded-2xl shadow-sm flex flex-col justify-between h-36">
               <p className="text-xs font-medium text-white/90">Bookings Today</p>
-              <p className="text-3xl font-bold">{stats.bookingsToday}</p>
+              <p className="text-3xl font-bold">{loading ? '...' : stats.bookingsToday}</p>
             </div>
 
             {/* Card 5 */}
             <div className="bg-[#7C5CFC] text-white p-5 rounded-2xl shadow-sm flex flex-col justify-between h-36">
               <p className="text-xs font-medium text-white/90">Bookings This Week</p>
-              <p className="text-3xl font-bold">{stats.bookingsThisWeek}</p>
+              <p className="text-3xl font-bold">{loading ? '...' : stats.bookingsThisWeek}</p>
             </div>
 
             {/* Card 6 */}
             <div className="bg-[#7C5CFC] text-white p-5 rounded-2xl shadow-sm flex flex-col justify-between h-36">
               <p className="text-xs font-medium text-white/90">Peak Booking Month</p>
-              <p className="text-3xl font-bold">{stats.peakBookingMonth}</p>
+              <p className="text-3xl font-bold">{loading ? '...' : stats.peakBookingMonth}</p>
             </div>
 
-            {/* Card 7 (Spans full width or single card) */}
+            {/* Card 7 */}
             <div className="bg-[#7C5CFC] text-white p-5 rounded-2xl shadow-sm flex flex-col justify-between h-36 col-span-1">
               <p className="text-xs font-medium text-white/90">Most Booked Time Slot</p>
-              <p className="text-3xl font-bold">{stats.mostBookedTimeSlot}</p>
+              <p className="text-3xl font-bold">{loading ? '...' : stats.mostBookedTimeSlot}</p>
             </div>
 
           </div>
@@ -268,7 +267,7 @@ useEffect(() => {
           {/* RIGHT COLUMN: BAR CHART & PIE CHART */}
           <div className="lg:col-span-7 space-y-8 min-w-0">
             
-            {/* 1. BOOKINGS BAR CHART (No embedded dropdowns) */}
+            {/* 1. BOOKINGS BAR CHART */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between min-w-0 relative">
               <h3 className="text-sm font-semibold text-slate-700 mb-2">Bookings</h3>
 
@@ -288,7 +287,7 @@ useEffect(() => {
                   ))
                 ) : (
                   <div className="w-full flex items-center justify-center text-xs text-slate-400">
-                    No booking records found for this timeframe.
+                    {loading ? 'Loading chart data...' : 'No booking records found for this timeframe.'}
                   </div>
                 )}
               </div>

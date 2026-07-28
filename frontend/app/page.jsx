@@ -17,6 +17,13 @@ export default function AuthPage() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  const toggleAuthMode = () => {
+    setIsSignUp((prev) => !prev);
+    setError('');
+    setSuccessMessage('');
+    setFormData((prev) => ({ ...prev, password: '' }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -24,6 +31,7 @@ export default function AuthPage() {
     setSuccessMessage('');
 
     const endpoint = isSignUp ? '/api/auth/register' : '/api/auth/login';
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
     // Payload formatted for backend controller
     const payload = isSignUp
@@ -31,7 +39,7 @@ export default function AuthPage() {
       : { email: formData.email, password: formData.password };
 
     try {
-      const res = await fetch(`http://localhost:5000${endpoint}`, {
+      const res = await fetch(`${baseUrl}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -48,14 +56,19 @@ export default function AuthPage() {
       } else {
         // --- LOG IN SUCCESS ---
         if (data.token) {
-          // Store in localStorage for client-side component calls
+          // Store token and user details in localStorage for client-side component calls
           localStorage.setItem('token', data.token);
           localStorage.setItem('email', formData.email);
+          
+          if (data.companyName || data.name) {
+            localStorage.setItem('name', data.companyName || data.name);
+          }
 
           // Store in document.cookie so Next.js middleware.js can read it on route changes
           document.cookie = `token=${data.token}; path=/; max-age=86400; SameSite=Lax`;
         }
-        console.log('Logged in successfully:', data);
+
+        // Redirect to dashboard with full page reload to ensure cookie synchronization
         window.location.href = '/dashboard';
       }
     } catch (err) {
@@ -134,11 +147,8 @@ export default function AuthPage() {
 
           {/* Toggle Link */}
           <button
-            onClick={() => {
-              setIsSignUp(!isSignUp);
-              setError('');
-              setSuccessMessage('');
-            }}
+            type="button"
+            onClick={toggleAuthMode}
             className="mt-6 text-xs text-white/90 hover:underline font-normal cursor-pointer"
           >
             {isSignUp ? (

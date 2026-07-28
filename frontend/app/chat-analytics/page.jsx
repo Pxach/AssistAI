@@ -11,7 +11,6 @@ import {
   Home
 } from 'lucide-react';
 
-
 export default function ChatAnalyticsPage() {
   const [stats, setStats] = useState({
     usefulnessPct: 0,
@@ -44,20 +43,21 @@ export default function ChatAnalyticsPage() {
     email: 'admin@example.com'
   });
 
-useEffect(() => {
-  const storedEmail = localStorage.getItem('email') || localStorage.getItem('userEmail');
-  const storedName = localStorage.getItem('name') || localStorage.getItem('userName');
+  // Safely sync user info from localStorage without triggering cascading render warnings
+  useEffect(() => {
+    const storedEmail = localStorage.getItem('email') || localStorage.getItem('userEmail');
+    const storedName = localStorage.getItem('name') || localStorage.getItem('userName');
 
-  if (storedEmail) {
-    // Wrapping in setTimeout defers the update to the next tick, clearing the linter error
-    setTimeout(() => {
-      setUser({
-        name: storedName || storedEmail.split('@')[0].toUpperCase(),
-        email: storedEmail
+    if (storedEmail) {
+      queueMicrotask(() => {
+        setUser({
+          name: storedName || storedEmail.split('@')[0].toUpperCase(),
+          email: storedEmail
+        });
       });
-    }, 0);
-  }
-}, []);
+    }
+  }, []);
+
   // Fetch Chat Analytics Data
   useEffect(() => {
     let isMounted = true;
@@ -116,7 +116,7 @@ useEffect(() => {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `chat_analytics_${timeframe.toLowerCase().replace(' ', '_')}.csv`;
+      a.download = `chat_analytics_${timeframe.toLowerCase().replace(/\s+/g, '_')}.csv`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -155,7 +155,7 @@ useEffect(() => {
     <div className="flex h-screen bg-[#F8F9FD] text-slate-800 font-sans overflow-hidden">
       
       {/* SIDEBAR */}
-      <aside className="w-64 bg-[#7C5CFC] text-white flex flex-col justify-between p-6 shadow-lg">
+      <aside className="w-64 bg-[#7C5CFC] text-white flex flex-col justify-between p-6 shadow-lg shrink-0">
         <div>
           {/* Navigation Links */}
           <nav className="space-y-6 mt-6">
@@ -203,20 +203,20 @@ useEffect(() => {
 
         {/* Sidebar Footer */}
         <div className="border-t border-white/20 pt-4">
-  <h2 className="font-bold text-lg mb-4">AssistAI</h2>
-  <div className="flex items-center space-x-3">
-    {/* Dynamic Avatar showing User Initial */}
-    <div className="w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center font-bold text-base shrink-0">
-      {user.email ? user.email[0].toUpperCase() : 'U'}
-    </div>
-    
-    {/* Dynamic User Information */}
-    <div className="text-sm min-w-0 flex-1">
-      <p className="font-semibold leading-tight truncate">{user.name}</p>
-      <p className="text-xs text-white/70 truncate">{user.email}</p>
-    </div>
-  </div>
-</div>
+          <h2 className="font-bold text-lg mb-4">AssistAI</h2>
+          <div className="flex items-center space-x-3">
+            {/* Dynamic Avatar showing User Initial */}
+            <div className="w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center font-bold text-base shrink-0">
+              {user.email ? user.email[0].toUpperCase() : 'U'}
+            </div>
+            
+            {/* Dynamic User Information */}
+            <div className="text-sm min-w-0 flex-1">
+              <p className="font-semibold leading-tight truncate">{user.name}</p>
+              <p className="text-xs text-white/70 truncate">{user.email}</p>
+            </div>
+          </div>
+        </div>
       </aside>
 
       {/* MAIN CONTENT AREA */}

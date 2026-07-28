@@ -4,7 +4,7 @@ import { convertToCSV } from '../utils/csvFormatter.js';
 /**
  * Helper to apply dynamic timeframe filters based on request query params
  */
-const applyTimeframeFilter = (query, timeframe, dateColumn = 'CreatedAt') => {
+const applyTimeframeFilter = (query, timeframe, dateColumn = 'created_at') => {
   const getSubtractedDate = (days = 0, months = 0, years = 0) => {
     const d = new Date();
     if (days) d.setDate(d.getDate() - days);
@@ -14,15 +14,19 @@ const applyTimeframeFilter = (query, timeframe, dateColumn = 'CreatedAt') => {
   };
 
   switch (timeframe?.toLowerCase()) {
+    case 'today':
     case 'per day':
     case 'day':
       return query.where(dateColumn, '>=', getSubtractedDate(1));
+    case 'this week':
     case 'per week':
     case 'week':
       return query.where(dateColumn, '>=', getSubtractedDate(7));
+    case 'this month':
     case 'per month':
     case 'month':
       return query.where(dateColumn, '>=', getSubtractedDate(0, 1));
+    case 'this year':
     case 'per year':
     case 'year':
       return query.where(dateColumn, '>=', getSubtractedDate(0, 0, 1));
@@ -40,8 +44,8 @@ export const getDashboardStats = async (req, res) => {
     const { timeframe = 'All-time', chartView = 'month' } = req.query;
 
     // 1. STAT CARDS CALCULATIONS
-    const conversationsCount = await applyTimeframeFilter(db('ChatLogs'), timeframe, 'CreatedAt')
-      .count('ChatID as count')
+    const conversationsCount = await applyTimeframeFilter(db('conversations'), timeframe, 'created_at')
+      .count('id as count')
       .first();
 
     const reviewsCount = await applyTimeframeFilter(db('Review'), timeframe, 'CreatedAt')
@@ -52,11 +56,25 @@ export const getDashboardStats = async (req, res) => {
       .count('id as count')
       .first();
 
-    const alertsTodayCount = await db('ChatSession')
-      .where('Handover', true)
-      .andWhere('CreatedAt', '>=', db.raw('CURRENT_DATE'))
-      .count('PhoneNumber as count')
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const negativeReviewsToday = await db('Review')
+      .where('CreatedAt', '>=', todayStart)
+      .where(function () {
+        this.where('Sentiment', 'Negative').orWhere('Rating', '<=', 2);
+      })
+      .count('ReviewID as count')
       .first();
+
+    const flaggedToday = await db('FlaggedMessages')
+      .where('created_at', '>=', todayStart)
+      .count('id as count')
+      .first();
+
+    const alertsToday =
+      (parseInt(negativeReviewsToday?.count || 0, 10)) +
+      (parseInt(flaggedToday?.count || 0, 10));
 
     // 2. ACTIVITY BAR CHART CALCULATIONS
     let truncUnit = 'month';
@@ -64,8 +82,11 @@ export const getDashboardStats = async (req, res) => {
     else if (chartView === 'week') truncUnit = 'week';
     else if (chartView === 'year') truncUnit = 'year';
 
-    const activityDataRaw = await applyTimeframeFilter(db('ChatLogs'), timeframe, 'CreatedAt')
-      .select(db.raw(`DATE_TRUNC('${truncUnit}', "CreatedAt") as period`), db.raw('COUNT("ChatID")::integer as val'))
+    const activityDataRaw = await applyTimeframeFilter(db('conversations'), timeframe, 'created_at')
+      .select(
+        db.raw(`DATE_TRUNC('${truncUnit}', "created_at") as period`),
+        db.raw('COUNT("id")::integer as val')
+      )
       .groupBy('period')
       .orderBy('period', 'asc');
 
@@ -77,17 +98,18 @@ export const getDashboardStats = async (req, res) => {
       return { label, val: row.val };
     });
 
-    // 3. HUMAN INTERVENTION & DEADLINES
-    const humanInterventions = await db('ChatSession')
-      .leftJoin('Customer', 'ChatSession.PhoneNumber', 'Customer.PhoneNumber')
-      .where('ChatSession.Handover', true)
-      .andWhere('ChatSession.Active', true)
+    // 3. HUMAN INTERVENTION LIST (Flagged Messages needing review)
+    const humanInterventions = await db('FlaggedMessages')
       .select(
-        'ChatSession.PhoneNumber',
-        'ChatSession.CreatedAt',
-        'Customer.Name as CustomerName'
+        'id',
+        'conversation_id',
+        'flagged_by',
+        'message_text',
+        'flag_reason',
+        'created_at'
       )
-      .orderBy('ChatSession.CreatedAt', 'desc');
+      .orderBy('created_at', 'desc')
+      .limit(5);
 
     return res.status(200).json({
       success: true,
@@ -96,7 +118,7 @@ export const getDashboardStats = async (req, res) => {
           totalConversations: parseInt(conversationsCount?.count || 0, 10),
           totalReviews: parseInt(reviewsCount?.count || 0, 10),
           totalBookings: parseInt(bookingsCount?.count || 0, 10),
-          alertsToday: parseInt(alertsTodayCount?.count || 0, 10),
+          alertsToday,
         },
         activityData,
         humanInterventions,

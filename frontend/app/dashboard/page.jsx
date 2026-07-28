@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { 
-  Home,
+  Home, 
   MessageSquare, 
   Star, 
   Calendar, 
@@ -13,21 +13,18 @@ import {
 
 export default function DashboardPage() {
   const [stats, setStats] = useState({
-    totalConversations: 350,
-    totalReviews: 200,
-    totalBookings: 54,
-    alertsToday: 3
+    totalConversations: 0,
+    totalReviews: 0,
+    positiveReviews: 0,
+    negativeReviews: 0,
+    totalBookings: 0,
+    alertsToday: 0
   });
 
   const [timeframe, setTimeframe] = useState('All-time');
-  
-  // State for chart data (dynamically adjusted based on timeframe)
-  const [chartData, setChartData] = useState([
-    { label: '2023', val: 150 },
-    { label: '2024', val: 280 },
-    { label: '2025', val: 310 },
-    { label: '2026', val: 380 },
-  ]);
+  const [chartData, setChartData] = useState([]);
+  const [humanInterventions, setHumanInterventions] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [user, setUser] = useState({
     name: 'Admin User',
@@ -39,92 +36,59 @@ export default function DashboardPage() {
     const storedName = localStorage.getItem('name') || localStorage.getItem('userName');
 
     if (storedEmail) {
-      setTimeout(() => {
+      queueMicrotask(() => {
         setUser({
           name: storedName || storedEmail.split('@')[0].toUpperCase(),
           email: storedEmail
         });
-      }, 0);
+      });
     }
   }, []);
 
-  // Dynamically update stats and chart data when timeframe changes
+  // Fetch dashboard metrics and chart data directly from backend API
   useEffect(() => {
-    setTimeout(() => {
-      switch (timeframe) {
-        case 'Today':
-          setStats({ totalConversations: 14, totalReviews: 6, totalBookings: 2, alertsToday: 3 });
-          setChartData([
-            { label: '8 AM', val: 2 },
-            { label: '10 AM', val: 5 },
-            { label: '12 PM', val: 12 },
-            { label: '2 PM', val: 8 },
-            { label: '4 PM', val: 15 },
-            { label: '6 PM', val: 9 },
-            { label: '8 PM', val: 4 },
-          ]);
-          break;
+    const fetchDashboardData = async () => {
+      setIsLoading(true);
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(
+          `http://localhost:5000/api/dashboard/stats?timeframe=${encodeURIComponent(timeframe)}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          }
+        );
 
-        case 'This Week':
-          setStats({ totalConversations: 88, totalReviews: 45, totalBookings: 12, alertsToday: 3 });
-          setChartData([
-            { label: 'MON', val: 12 },
-            { label: 'TUE', val: 19 },
-            { label: 'WED', val: 15 },
-            { label: 'THU', val: 22 },
-            { label: 'FRI', val: 28 },
-            { label: 'SAT', val: 10 },
-            { label: 'SUN', val: 5 },
-          ]);
-          break;
+        const result = await response.json();
 
-        case 'This Month':
-          setStats({ totalConversations: 240, totalReviews: 130, totalBookings: 35, alertsToday: 3 });
-          setChartData([
-            { label: 'Week 1', val: 50 },
-            { label: 'Week 2', val: 65 },
-            { label: 'Week 3', val: 80 },
-            { label: 'Week 4', val: 45 },
-          ]);
-          break;
-
-        case 'This Year':
-          setStats({ totalConversations: 320, totalReviews: 185, totalBookings: 49, alertsToday: 3 });
-          setChartData([
-            { label: 'JAN', val: 100 },
-            { label: 'FEB', val: 140 },
-            { label: 'MAR', val: 140 },
-            { label: 'APR', val: 240 },
-            { label: 'MAY', val: 270 },
-            { label: 'JUN', val: 200 },
-            { label: 'JUL', val: 240 },
-            { label: 'AUG', val: 100 },
-            { label: 'SEP', val: 270 },
-            { label: 'OCT', val: 340 },
-            { label: 'NOV', val: 360 },
-            { label: 'DEC', val: 380 },
-          ]);
-          break;
-
-        case 'All-time':
-        default:
-          setStats({ totalConversations: 350, totalReviews: 200, totalBookings: 54, alertsToday: 3 });
-          setChartData([
-            { label: '2023', val: 150 },
-            { label: '2024', val: 280 },
-            { label: '2025', val: 310 },
-            { label: '2026', val: 380 },
-          ]);
-          break;
+        if (result.success && result.data) {
+          setStats(result.data.overview || {
+            totalConversations: 0,
+            totalReviews: 0,
+            positiveReviews: 0,
+            negativeReviews: 0,
+            totalBookings: 0,
+            alertsToday: 0
+          });
+          setChartData(result.data.activityData || []);
+          setHumanInterventions(result.data.humanInterventions || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch dashboard metrics:', err);
+      } finally {
+        setIsLoading(false);
       }
-    }, 0);
+    };
+
+    fetchDashboardData();
   }, [timeframe]);
 
   const handleCsvDownload = async () => {
     try {
       const response = await fetch('http://localhost:5000/api/dashboard/export-csv', {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          Authorization: `Bearer ${localStorage.getItem('token')}`
         }
       });
       const blob = await response.blob();
@@ -140,13 +104,26 @@ export default function DashboardPage() {
     }
   };
 
-  // Calculate dynamic maximum value to relative scale bar heights correctly
-  const maxVal = Math.max(...chartData.map((d) => d.val), 1);
+  // Calculate dynamic maximum value to scale bar heights dynamically
+  const maxVal = chartData.length > 0 ? Math.max(...chartData.map((d) => d.val), 1) : 1;
+
+  // Calculate Conversations to Booking Ratio for SVG Donut/Pie Chart
+  const convCount = stats.totalConversations || 0;
+  const bookCount = stats.totalBookings || 0;
+  const pieTotal = convCount + bookCount || 1;
+  const convPct = Math.round((convCount / pieTotal) * 100);
+  const bookPct = 100 - convPct;
+  
+  // SVG Stroke Dash Calculations
+  const radius = 40;
+  const circumference = 2 * Math.PI * radius;
+  const convOffset = 0;
+  const bookDash = (bookPct / 100) * circumference;
 
   return (
     <div className="flex h-screen bg-[#F8F9FD] text-slate-800 font-sans">
       {/* SIDEBAR */}
-      <aside className="w-64 bg-[#7C5CFC] text-white flex flex-col justify-between p-6 shadow-lg">
+      <aside className="w-64 bg-[#7C5CFC] text-white flex flex-col justify-between p-6 shadow-lg shrink-0">
         <div>
           {/* Navigation Links */}
           <nav className="space-y-6 mt-6">
@@ -196,12 +173,10 @@ export default function DashboardPage() {
         <div className="border-t border-white/20 pt-4">
           <h2 className="font-bold text-lg mb-4">AssistAI</h2>
           <div className="flex items-center space-x-3">
-            {/* Dynamic Avatar showing User Initial */}
             <div className="w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center font-bold text-base shrink-0">
               {user.email ? user.email[0].toUpperCase() : 'U'}
             </div>
             
-            {/* Dynamic User Information */}
             <div className="text-sm min-w-0 flex-1">
               <p className="font-semibold leading-tight truncate">{user.name}</p>
               <p className="text-xs text-white/70 truncate">{user.email}</p>
@@ -232,57 +207,130 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* TOP SECTION: GRID + CHART */}
+        {/* TOP STAT CARDS (3x2 GRID) */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+          <div className="bg-[#7C5CFC] text-white p-5 rounded-2xl shadow-sm flex flex-col justify-between h-32">
+            <p className="text-xs font-medium text-white/80">Total Conversations</p>
+            <p className="text-3xl font-bold">{isLoading ? '...' : stats.totalConversations}</p>
+          </div>
+
+          <div className="bg-[#7C5CFC] text-white p-5 rounded-2xl shadow-sm flex flex-col justify-between h-32">
+            <p className="text-xs font-medium text-white/80">Total Reviews</p>
+            <p className="text-3xl font-bold">{isLoading ? '...' : stats.totalReviews}</p>
+          </div>
+
+          <div className="bg-[#7C5CFC] text-white p-5 rounded-2xl shadow-sm flex flex-col justify-between h-32">
+            <p className="text-xs font-medium text-white/80">Positive Reviews</p>
+            <p className="text-3xl font-bold">{isLoading ? '...' : stats.positiveReviews}</p>
+          </div>
+
+          <div className="bg-[#7C5CFC] text-white p-5 rounded-2xl shadow-sm flex flex-col justify-between h-32">
+            <p className="text-xs font-medium text-white/80">Negative Reviews</p>
+            <p className="text-3xl font-bold">{isLoading ? '...' : stats.negativeReviews}</p>
+          </div>
+
+          <div className="bg-[#7C5CFC] text-white p-5 rounded-2xl shadow-sm flex flex-col justify-between h-32">
+            <p className="text-xs font-medium text-white/80">Total Bookings</p>
+            <p className="text-3xl font-bold">{isLoading ? '...' : stats.totalBookings}</p>
+          </div>
+
+          <div className="bg-[#7C5CFC] text-white p-5 rounded-2xl shadow-sm flex flex-col justify-between h-32">
+            <p className="text-xs font-medium text-white/80">Alerts Today</p>
+            <p className="text-3xl font-bold">{isLoading ? '...' : stats.alertsToday}</p>
+          </div>
+        </div>
+
+        {/* MIDDLE SECTION: CHARTS */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
           
-          {/* 4 STAT CARDS (2x2) */}
-          <div className="lg:col-span-5 grid grid-cols-2 gap-4">
-            <div className="bg-[#7C5CFC] text-white p-5 rounded-2xl shadow-sm flex flex-col justify-between h-32">
-              <p className="text-xs font-medium text-white/80">Total Conversations</p>
-              <p className="text-3xl font-bold">{stats.totalConversations}</p>
-            </div>
+          {/* CONVERSATIONS TO BOOKING RATIO (PIE CHART CARD) */}
+          <div className="lg:col-span-5 bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between min-h-[260px]">
+            <h3 className="text-sm font-semibold text-slate-700 mb-2">Conversations to Booking Ratio</h3>
+            
+            <div className="flex items-center justify-around my-auto">
+              {/* SVG Donut Chart */}
+              <div className="relative w-32 h-32 flex items-center justify-center">
+                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                  {/* Background Circle (Conversations) */}
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r={radius}
+                    stroke="#7C5CFC"
+                    strokeWidth="12"
+                    fill="transparent"
+                  />
+                  {/* Foreground Circle (Bookings) */}
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r={radius}
+                    stroke="#22C55E"
+                    strokeWidth="12"
+                    fill="transparent"
+                    strokeDasharray={`${bookDash} ${circumference}`}
+                    className="transition-all duration-500"
+                  />
+                </svg>
+                <div className="absolute text-center">
+                  <span className="text-xs text-slate-400 block font-medium">Booked</span>
+                  <span className="text-lg font-bold text-slate-800">
+                    {convCount > 0 ? `${((bookCount / convCount) * 100).toFixed(0)}%` : '0%'}
+                  </span>
+                </div>
+              </div>
 
-            <div className="bg-[#7C5CFC] text-white p-5 rounded-2xl shadow-sm flex flex-col justify-between h-32">
-              <p className="text-xs font-medium text-white/80">Total Reviews</p>
-              <p className="text-3xl font-bold">{stats.totalReviews}</p>
-            </div>
-
-            <div className="bg-[#7C5CFC] text-white p-5 rounded-2xl shadow-sm flex flex-col justify-between h-32">
-              <p className="text-xs font-medium text-white/80">Total Bookings</p>
-              <p className="text-3xl font-bold">{stats.totalBookings}</p>
-            </div>
-
-            <div className="bg-[#7C5CFC] text-white p-5 rounded-2xl shadow-sm flex flex-col justify-between h-32">
-              <p className="text-xs font-medium text-white/80">Number of Alerts Today</p>
-              <p className="text-3xl font-bold">{stats.alertsToday}</p>
+              {/* Chart Legend */}
+              <div className="space-y-3">
+                <div className="flex items-center space-x-2">
+                  <span className="w-3 h-3 rounded-full bg-[#7C5CFC] inline-block"></span>
+                  <div className="text-xs">
+                    <p className="text-slate-500 font-medium">Conversations</p>
+                    <p className="font-bold text-slate-800">{convCount} ({convPct}%)</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <span className="w-3 h-3 rounded-full bg-[#22C55E] inline-block"></span>
+                  <div className="text-xs">
+                    <p className="text-slate-500 font-medium">Bookings</p>
+                    <p className="font-bold text-slate-800">{bookCount} ({bookPct}%)</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
           {/* ACTIVITY BAR CHART CARD */}
-          <div className="lg:col-span-7 bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
+          <div className="lg:col-span-7 bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between min-h-[260px]">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-sm font-semibold text-slate-700">Activity</h3>
             </div>
 
-            {/* Dynamic Custom Bar Chart */}
-            <div className="h-44 flex items-end justify-between gap-2 pt-4 border-b border-slate-100 pb-2">
-              {chartData.map((item, idx) => (
-                <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group">
-                  <div 
-                    style={{ height: `${(item.val / maxVal) * 100}%` }}
-                    className="w-2.5 bg-[#4B70F5] rounded-full transition-all duration-300 group-hover:bg-[#7C5CFC]"
-                    title={`${item.label}: ${item.val}`}
-                  ></div>
+            {chartData.length > 0 ? (
+              <>
+                <div className="h-44 flex items-end justify-between gap-2 pt-4 border-b border-slate-100 pb-2">
+                  {chartData.map((item, idx) => (
+                    <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group">
+                      <div 
+                        style={{ height: `${(item.val / maxVal) * 100}%` }}
+                        className="w-2.5 bg-[#4B70F5] rounded-full transition-all duration-300 group-hover:bg-[#7C5CFC]"
+                        title={`${item.label}: ${item.val}`}
+                      ></div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
 
-            {/* Dynamic X-Axis Labels */}
-            <div className="flex justify-between text-[10px] text-slate-400 font-medium mt-2">
-              {chartData.map((item, idx) => (
-                <span key={idx} className="flex-1 text-center truncate px-0.5">{item.label}</span>
-              ))}
-            </div>
+                <div className="flex justify-between text-[10px] text-slate-400 font-medium mt-2">
+                  {chartData.map((item, idx) => (
+                    <span key={idx} className="flex-1 text-center truncate px-0.5">{item.label}</span>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="h-44 flex items-center justify-center text-xs text-slate-400 font-medium">
+                {isLoading ? 'Loading activity...' : 'No activity records found for this timeframe'}
+              </div>
+            )}
           </div>
 
         </div>
@@ -295,15 +343,24 @@ export default function DashboardPage() {
             <h3 className="text-xs font-semibold text-slate-500 mb-4">Human Intervention Need</h3>
             
             <div className="space-y-3">
-              <div className="bg-[#EAE4FF] text-[#5B3BC4] text-xs font-medium py-3 px-4 rounded-xl">
-                Conversation 1: 7/13/2026, 11:44pm
-              </div>
-              <div className="bg-[#EAE4FF] text-[#5B3BC4] text-xs font-medium py-3 px-4 rounded-xl">
-                Conversation 2: 7/14/2026, 6:00am
-              </div>
-              <div className="bg-[#EAE4FF] text-[#5B3BC4] text-xs font-medium py-3 px-4 rounded-xl">
-                Conversation 3: 7/14/2026, 2:30pm
-              </div>
+              {humanInterventions.length > 0 ? (
+                humanInterventions.map((item, idx) => (
+                  <div key={item.id || idx} className="bg-[#EAE4FF] text-[#5B3BC4] text-xs font-medium py-3 px-4 rounded-xl flex items-center justify-between">
+                    <span>
+                      Conversation {item.conversation_id || item.id}: {new Date(item.created_at).toLocaleString()}
+                    </span>
+                    {item.flag_reason && (
+                      <span className="text-[10px] bg-white/70 px-2 py-0.5 rounded font-semibold">
+                        {item.flag_reason}
+                      </span>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className="text-xs text-slate-400 py-6 text-center font-medium">
+                  {isLoading ? 'Loading interventions...' : 'No active human intervention requests'}
+                </div>
+              )}
             </div>
           </div>
 
@@ -312,8 +369,6 @@ export default function DashboardPage() {
             <h3 className="text-xs font-semibold text-slate-500 mb-4">24 Hour Answer Deadlines</h3>
 
             <div className="space-y-5">
-              
-              {/* Conversation 1 */}
               <div>
                 <div className="flex justify-between text-xs font-medium mb-1">
                   <span className="text-slate-800">Conversation 1</span>
@@ -324,7 +379,6 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Conversation 2 */}
               <div>
                 <div className="flex justify-between text-xs font-medium mb-1">
                   <span className="text-slate-800">Conversation 2</span>
@@ -335,7 +389,6 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Conversation 3 */}
               <div>
                 <div className="flex justify-between text-xs font-medium mb-1">
                   <span className="text-slate-800">Conversation 3</span>

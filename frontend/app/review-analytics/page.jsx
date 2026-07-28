@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { 
   MessageSquare, 
   Star, 
@@ -9,8 +10,6 @@ import {
   Loader2,
   Home
 } from 'lucide-react';
-import Link from 'next/link';
-
 
 export default function ReviewAnalyticsPage() {
   const [stats, setStats] = useState({
@@ -39,26 +38,28 @@ export default function ReviewAnalyticsPage() {
     email: 'admin@example.com'
   });
 
-useEffect(() => {
-  const storedEmail = localStorage.getItem('email') || localStorage.getItem('userEmail');
-  const storedName = localStorage.getItem('name') || localStorage.getItem('userName');
+  // Safely sync user info from localStorage without triggering cascading render warnings
+  useEffect(() => {
+    const storedEmail = localStorage.getItem('email') || localStorage.getItem('userEmail');
+    const storedName = localStorage.getItem('name') || localStorage.getItem('userName');
 
-  if (storedEmail) {
-    // Wrapping in setTimeout defers the update to the next tick, clearing the linter error
-    setTimeout(() => {
-      setUser({
-        name: storedName || storedEmail.split('@')[0].toUpperCase(),
-        email: storedEmail
+    if (storedEmail) {
+      queueMicrotask(() => {
+        setUser({
+          name: storedName || storedEmail.split('@')[0].toUpperCase(),
+          email: storedEmail
+        });
       });
-    }, 0);
-  }
-}, []);
+    }
+  }, []);
+
   // Fetch Review Analytics Data
   useEffect(() => {
     let isMounted = true;
 
     async function loadReviewData() {
       try {
+        setLoading(true);
         const response = await fetch(
           `http://localhost:5000/api/dashboard/review-stats?timeframe=${encodeURIComponent(timeframe)}`,
           {
@@ -69,11 +70,11 @@ useEffect(() => {
         );
         const result = await response.json();
         if (result.success && isMounted) {
-          setStats(result.data.overview);
-          setNegativeReviews(result.data.negativeReviews);
-          setPieData(result.data.pieChart);
-          setCategories(result.data.categories);
-          setChartData(result.data.chartData);
+          setStats(result.data.overview || {});
+          setNegativeReviews(result.data.negativeReviews || []);
+          setPieData(result.data.pieChart || {});
+          setCategories(result.data.categories || []);
+          setChartData(result.data.chartData || []);
         }
       } catch (err) {
         console.error('Failed to load review analytics:', err);
@@ -92,22 +93,25 @@ useEffect(() => {
   }, [timeframe]);
 
   const handleTimeframeChange = (e) => {
-    setLoading(true);
     setTimeframe(e.target.value);
   };
 
   const handleCsvDownload = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/dashboard/export-csv', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+      // Passes current timeframe selection to CSV export endpoint
+      const response = await fetch(
+        `http://localhost:5000/api/dashboard/export-csv?timeframe=${encodeURIComponent(timeframe)}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
         }
-      });
+      );
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'review_analytics_export.csv';
+      a.download = `review_analytics_${timeframe.toLowerCase().replace(/\s+/g, '_')}.csv`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -118,13 +122,13 @@ useEffect(() => {
 
   // Maximum value for scaling grouped bars
   const maxBarVal = Math.max(
-    ...chartData.map((d) => Math.max(d.total, d.positive, d.negative)),
+    ...chartData.map((d) => Math.max(d.total || 0, d.positive || 0, d.negative || 0)),
     1
   );
   const labelStep = Math.max(1, Math.ceil(chartData.length / 10));
 
   // Sentiment Pie Chart Conic Calculation
-  const positiveDegree = (pieData.positivePct / 100) * 360;
+  const positiveDegree = ((pieData.positivePct || 0) / 100) * 360;
 
   // Category Pie Chart Multi-Color Conic Calculation
   const categoryPalette = ['#7C5CFC', '#FF8A3D', '#3B82F6', '#EAB308', '#10B981', '#EC4899'];
@@ -134,7 +138,7 @@ useEffect(() => {
 
   for (let idx = 0; idx < categories.length; idx++) {
     const cat = categories[idx];
-    const deg = (cat.pct / 100) * 360;
+    const deg = ((cat.pct || 0) / 100) * 360;
     const start = accumulatedDeg;
     accumulatedDeg += deg;
     const color = categoryPalette[idx % categoryPalette.length];
@@ -149,7 +153,7 @@ useEffect(() => {
     <div className="flex h-screen bg-[#F8F9FD] text-slate-800 font-sans overflow-hidden">
       
       {/* SIDEBAR */}
-      <aside className="w-64 bg-[#7C5CFC] text-white flex flex-col justify-between p-6 shadow-lg">
+      <aside className="w-64 bg-[#7C5CFC] text-white flex flex-col justify-between p-6 shadow-lg shrink-0">
         <div>
           {/* Navigation Links */}
           <nav className="space-y-6 mt-6">
@@ -197,20 +201,20 @@ useEffect(() => {
 
         {/* Sidebar Footer */}
         <div className="border-t border-white/20 pt-4">
-  <h2 className="font-bold text-lg mb-4">AssistAI</h2>
-  <div className="flex items-center space-x-3">
-    {/* Dynamic Avatar showing User Initial */}
-    <div className="w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center font-bold text-base shrink-0">
-      {user.email ? user.email[0].toUpperCase() : 'U'}
-    </div>
-    
-    {/* Dynamic User Information */}
-    <div className="text-sm min-w-0 flex-1">
-      <p className="font-semibold leading-tight truncate">{user.name}</p>
-      <p className="text-xs text-white/70 truncate">{user.email}</p>
-    </div>
-  </div>
-</div>
+          <h2 className="font-bold text-lg mb-4">AssistAI</h2>
+          <div className="flex items-center space-x-3">
+            {/* Dynamic Avatar showing User Initial */}
+            <div className="w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center font-bold text-base shrink-0">
+              {user.email ? user.email[0].toUpperCase() : 'U'}
+            </div>
+            
+            {/* Dynamic User Information */}
+            <div className="text-sm min-w-0 flex-1">
+              <p className="font-semibold leading-tight truncate">{user.name}</p>
+              <p className="text-xs text-white/70 truncate">{user.email}</p>
+            </div>
+          </div>
+        </div>
       </aside>
 
       {/* MAIN CONTENT AREA */}
@@ -250,22 +254,22 @@ useEffect(() => {
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-[#7C5CFC] text-white p-5 rounded-2xl shadow-sm flex flex-col justify-between h-36">
                 <p className="text-xs font-medium text-white/90">Total Reviews</p>
-                <p className="text-3xl font-bold">{stats.totalReviews}</p>
+                <p className="text-3xl font-bold">{stats.totalReviews || 0}</p>
               </div>
 
               <div className="bg-[#7C5CFC] text-white p-5 rounded-2xl shadow-sm flex flex-col justify-between h-36">
                 <p className="text-xs font-medium text-white/90">Total Positive Reviews</p>
-                <p className="text-3xl font-bold">{stats.totalPositiveReviews}</p>
+                <p className="text-3xl font-bold">{stats.totalPositiveReviews || 0}</p>
               </div>
 
               <div className="bg-[#7C5CFC] text-white p-5 rounded-2xl shadow-sm flex flex-col justify-between h-36">
                 <p className="text-xs font-medium text-white/90">Total Negative Reviews</p>
-                <p className="text-3xl font-bold">{stats.totalNegativeReviews}</p>
+                <p className="text-3xl font-bold">{stats.totalNegativeReviews || 0}</p>
               </div>
 
               <div className="bg-[#7C5CFC] text-white p-5 rounded-2xl shadow-sm flex flex-col justify-between h-36">
                 <p className="text-xs font-medium text-white/90">Number of Alerts Today</p>
-                <p className="text-3xl font-bold">{stats.alertsToday}</p>
+                <p className="text-3xl font-bold">{stats.alertsToday || 0}</p>
               </div>
             </div>
 
@@ -278,14 +282,16 @@ useEffect(() => {
                   negativeReviews.map((rev, idx) => {
                     const reviewId = rev.ReviewID || idx;
                     const isExpanded = expandedReviewId === reviewId;
-                    const formattedDate = new Date(rev.CreatedAt).toLocaleString('en-US', {
-                      month: 'numeric',
-                      day: 'numeric',
-                      year: 'numeric',
-                      hour: 'numeric',
-                      minute: '2-digit',
-                      hour12: true
-                    });
+                    const formattedDate = rev.CreatedAt 
+                      ? new Date(rev.CreatedAt).toLocaleString('en-US', {
+                          month: 'numeric',
+                          day: 'numeric',
+                          year: 'numeric',
+                          hour: 'numeric',
+                          minute: '2-digit',
+                          hour12: true
+                        })
+                      : 'N/A';
 
                     return (
                       <div 
@@ -341,22 +347,22 @@ useEffect(() => {
                     <div key={idx} className="flex-1 flex items-end justify-center gap-1 h-full min-w-0 group relative">
                       {/* Tooltip */}
                       <div className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:flex bg-slate-800 text-white text-[10px] font-medium py-1 px-2 rounded shadow-md z-30 whitespace-nowrap pointer-events-none">
-                        {item.label} | Total: {item.total}, Pos: {item.positive}, Neg: {item.negative}
+                        {item.label} | Total: {item.total || 0}, Pos: {item.positive || 0}, Neg: {item.negative || 0}
                       </div>
 
                       {/* Bar 1: Total (Blue) */}
                       <div 
-                        style={{ height: `${(item.total / maxBarVal) * 100}%` }}
+                        style={{ height: `${((item.total || 0) / maxBarVal) * 100}%` }}
                         className="w-1.5 bg-[#3B82F6] rounded-t-full transition-all duration-300"
                       />
                       {/* Bar 2: Positive (Red/Coral) */}
                       <div 
-                        style={{ height: `${(item.positive / maxBarVal) * 100}%` }}
+                        style={{ height: `${((item.positive || 0) / maxBarVal) * 100}%` }}
                         className="w-1.5 bg-[#EF4444] rounded-t-full transition-all duration-300"
                       />
                       {/* Bar 3: Negative (Green) */}
                       <div 
-                        style={{ height: `${(item.negative / maxBarVal) * 100}%` }}
+                        style={{ height: `${((item.negative || 0) / maxBarVal) * 100}%` }}
                         className="w-1.5 bg-[#22C55E] rounded-t-full transition-all duration-300"
                       />
                     </div>
@@ -411,14 +417,14 @@ useEffect(() => {
                   <div className="flex items-center space-x-2">
                     <span className="w-3 h-3 bg-[#65D44B] rounded-sm inline-block"></span>
                     <span className="text-slate-700">
-                      Positive: <strong className="text-slate-900">{pieData.positive} ({pieData.positivePct}%)</strong>
+                      Positive: <strong className="text-slate-900">{pieData.positive || 0} ({pieData.positivePct || 0}%)</strong>
                     </span>
                   </div>
 
                   <div className="flex items-center space-x-2">
                     <span className="w-3 h-3 bg-[#FF8A3D] rounded-sm inline-block"></span>
                     <span className="text-slate-700">
-                      Negative: <strong className="text-slate-900">{pieData.negative} ({pieData.negativePct}%)</strong>
+                      Negative: <strong className="text-slate-900">{pieData.negative || 0} ({pieData.negativePct || 0}%)</strong>
                     </span>
                   </div>
                 </div>
@@ -444,7 +450,7 @@ useEffect(() => {
                           style={{ backgroundColor: categoryPalette[idx % categoryPalette.length] }}
                         />
                         <span className="text-slate-700">
-                          {cat.label}: <strong className="text-slate-900">{cat.count} ({cat.pct}%)</strong>
+                          {cat.label}: <strong className="text-slate-900">{cat.count || 0} ({cat.pct || 0}%)</strong>
                         </span>
                       </div>
                     ))

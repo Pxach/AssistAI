@@ -1,50 +1,167 @@
 import express from 'express';
-import db from '../database/db.js'; // Adjust path to your database file if needed
-import { getDashboardStats, exportCsv } from '../controllers/dashboardController.js';
+import db from '../database/db.js';
+import { exportCsv } from '../controllers/dashboardController.js';
+
 const router = express.Router();
-router.get('/stats', getDashboardStats);
+
+// Helper function to resolve start dates for both frontend and backend timeframe formats
+const getStartDate = (timeframe) => {
+  const now = new Date();
+  if (timeframe === 'Today' || timeframe === 'Per Day') {
+    return new Date(now.setHours(0, 0, 0, 0));
+  } else if (timeframe === 'This Week' || timeframe === 'Per Week') {
+    return new Date(now.setDate(now.getDate() - 7));
+  } else if (timeframe === 'This Month' || timeframe === 'Per Month') {
+    return new Date(now.setMonth(now.getMonth() - 1));
+  } else if (timeframe === 'This Year' || timeframe === 'Per Year') {
+    return new Date(now.setFullYear(now.getFullYear() - 1));
+  }
+  return null;
+};
+
+// ==========================================
+// 0. HOME PAGE DASHBOARD ENDPOINT
+// ==========================================
+router.get('/stats', async (req, res) => {
+  try {
+    const { timeframe = 'All-time' } = req.query;
+    const startDate = getStartDate(timeframe);
+
+    // Filter helper for dynamic column date filtering
+    const applyDateFilter = (query, dateCol = 'created_at') => {
+      if (startDate) {
+        return query.where(dateCol, '>=', startDate);
+      }
+      return query;
+    };
+
+    // 1. Total Conversations (ChatSession -> "CreatedAt")
+    const convRes = await applyDateFilter(db('ChatSession'), 'CreatedAt').count('* as count').first();
+    const totalConversations = parseInt(convRes?.count, 10) || 0;
+
+    // 2. Total Bookings (appointments -> created_at)
+    const bookingRes = await applyDateFilter(db('appointments'), 'created_at').count('* as count').first();
+    const totalBookings = parseInt(bookingRes?.count, 10) || 0;
+
+    // 3. Reviews Breakdown (Review -> "CreatedAt", "Sentiment", "Rating")
+    const reviewTotalRes = await applyDateFilter(db('Review'), 'CreatedAt').count('* as count').first();
+    const totalReviews = parseInt(reviewTotalRes?.count, 10) || 0;
+
+    const posReviewRes = await applyDateFilter(db('Review'), 'CreatedAt')
+      .where(function() {
+        this.where('Sentiment', 'Positive').orWhere('Rating', '>=', 4);
+      })
+      .count('* as count')
+      .first();
+    const positiveReviews = parseInt(posReviewRes?.count, 10) || 0;
+
+    const negReviewRes = await applyDateFilter(db('Review'), 'CreatedAt')
+      .where(function() {
+        this.where('Sentiment', 'Negative').orWhere('Rating', '<=', 2);
+      })
+      .count('* as count')
+      .first();
+    const negativeReviews = parseInt(negReviewRes?.count, 10) || 0;
+
+    // 4. Alerts Today (FlaggedMessages created today)
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const alertsRes = await db('FlaggedMessages')
+      .where('created_at', '>=', todayStart)
+      .count('* as count')
+      .first();
+    const alertsToday = parseInt(alertsRes?.count, 10) || 0;
+
+    // 5. Activity Bar Chart Data (Adapts dynamically to timeframe)
+    let activityData = [];
+    if (['Today', 'Per Day', 'This Week', 'Per Week'].includes(timeframe)) {
+      const dailyRaw = await applyDateFilter(
+        db('ChatSession')
+          .select(
+            db.raw("TO_CHAR(\"CreatedAt\", 'MM/DD') as label"),
+            db.raw('COUNT(*) as val')
+          )
+          .groupBy(db.raw("TO_CHAR(\"CreatedAt\", 'MM/DD')"))
+          .orderBy('label', 'asc'),
+        'CreatedAt'
+      );
+      activityData = dailyRaw.map((r) => ({ label: r.label, val: parseInt(r.val, 10) }));
+    } else {
+      const monthlyRaw = await applyDateFilter(
+        db('ChatSession')
+          .select(
+            db.raw("UPPER(TO_CHAR(\"CreatedAt\", 'Mon')) as label"),
+            db.raw("EXTRACT(MONTH FROM \"CreatedAt\") as m_num"),
+            db.raw('COUNT(*) as val')
+          )
+          .groupBy(db.raw("UPPER(TO_CHAR(\"CreatedAt\", 'Mon')), EXTRACT(MONTH FROM \"CreatedAt\")"))
+          .orderBy(db.raw("EXTRACT(MONTH FROM \"CreatedAt\")"), 'asc'),
+        'CreatedAt'
+      );
+      activityData = monthlyRaw.map((r) => ({ label: r.label, val: parseInt(r.val, 10) }));
+    }
+
+    // 6. Human Interventions
+    const humanInterventions = await applyDateFilter(
+      db('FlaggedMessages')
+        .select('*')
+        .orderBy('created_at', 'desc')
+        .limit(5),
+      'created_at'
+    );
+
+    return res.json({
+      success: true,
+      data: {
+        overview: {
+          totalConversations,
+          totalReviews,
+          positiveReviews,
+          negativeReviews,
+          totalBookings,
+          alertsToday
+        },
+        activityData,
+        humanInterventions
+      }
+    });
+  } catch (err) {
+    console.error('Error fetching home dashboard stats:', err);
+    return res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 router.get('/export-csv', exportCsv);
+
 // ==========================================
 // 1. BOOKING ANALYTICS ENDPOINT
 // ==========================================
 router.get('/booking-stats', async (req, res) => {
   try {
     const { timeframe = 'All-time' } = req.query;
+    const startDate = getStartDate(timeframe);
 
-    let startDate = null;
-    const now = new Date();
-
-    if (timeframe === 'Per Day') {
-      startDate = new Date(now.setHours(0, 0, 0, 0));
-    } else if (timeframe === 'Per Week') {
-      startDate = new Date(now.setDate(now.getDate() - 7));
-    } else if (timeframe === 'Per Month') {
-      startDate = new Date(now.setMonth(now.getMonth() - 1));
-    } else if (timeframe === 'Per Year') {
-      startDate = new Date(now.setFullYear(now.getFullYear() - 1));
-    }
-
-    const applyDateFilter = (query) => {
+    const applyDateFilter = (query, dateCol = 'created_at') => {
       if (startDate) {
-        return query.where('created_at', '>=', startDate);
+        return query.where(dateCol, '>=', startDate);
       }
       return query;
     };
 
     const totalRequestsRes = await applyDateFilter(db('appointments')).count('id as count').first();
-    const totalBookingRequests = parseInt(totalRequestsRes.count, 10) || 0;
+    const totalBookingRequests = parseInt(totalRequestsRes?.count, 10) || 0;
 
     const confirmedRes = await applyDateFilter(db('appointments'))
       .whereIn('status', ['confirmed', 'completed'])
       .count('id as count')
       .first();
-    const totalConfirmedBookings = parseInt(confirmedRes.count, 10) || 0;
+    const totalConfirmedBookings = parseInt(confirmedRes?.count, 10) || 0;
 
     const unconfirmedRes = await applyDateFilter(db('appointments'))
       .whereIn('status', ['pending', 'unconfirmed'])
       .count('id as count')
       .first();
-    const totalUnconfirmedBookings = parseInt(unconfirmedRes.count, 10) || 0;
+    const totalUnconfirmedBookings = parseInt(unconfirmedRes?.count, 10) || 0;
 
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -52,7 +169,7 @@ router.get('/booking-stats', async (req, res) => {
       .where('created_at', '>=', todayStart)
       .count('id as count')
       .first();
-    const bookingsToday = parseInt(todayRes.count, 10) || 0;
+    const bookingsToday = parseInt(todayRes?.count, 10) || 0;
 
     const weekStart = new Date();
     weekStart.setDate(weekStart.getDate() - 7);
@@ -60,7 +177,7 @@ router.get('/booking-stats', async (req, res) => {
       .where('created_at', '>=', weekStart)
       .count('id as count')
       .first();
-    const bookingsThisWeek = parseInt(weekRes.count, 10) || 0;
+    const bookingsThisWeek = parseInt(weekRes?.count, 10) || 0;
 
     const peakMonthRes = await applyDateFilter(
       db('appointments')
@@ -93,7 +210,7 @@ router.get('/booking-stats', async (req, res) => {
     const unconfirmedPct = totalPie > 0 ? ((totalUnconfirmedBookings / totalPie) * 100).toFixed(1) : 0;
 
     let chartQuery;
-    if (timeframe === 'Per Day' || timeframe === 'Per Week') {
+    if (['Today', 'Per Day', 'This Week', 'Per Week'].includes(timeframe)) {
       chartQuery = applyDateFilter(
         db('appointments')
           .select(db.raw("TO_CHAR(created_at, 'MM/DD') as label"))
@@ -143,26 +260,13 @@ router.get('/booking-stats', async (req, res) => {
   }
 });
 
-
 // ==========================================
 // 2. REVIEW ANALYTICS ENDPOINT
 // ==========================================
 router.get('/review-stats', async (req, res) => {
   try {
     const { timeframe = 'All-time' } = req.query;
-
-    let startDate = null;
-    const now = new Date();
-
-    if (timeframe === 'Per Day') {
-      startDate = new Date(now.setHours(0, 0, 0, 0));
-    } else if (timeframe === 'Per Week') {
-      startDate = new Date(now.setDate(now.getDate() - 7));
-    } else if (timeframe === 'Per Month') {
-      startDate = new Date(now.setMonth(now.getMonth() - 1));
-    } else if (timeframe === 'Per Year') {
-      startDate = new Date(now.setFullYear(now.getFullYear() - 1));
-    }
+    const startDate = getStartDate(timeframe);
 
     const applyDateFilter = (query) => {
       if (startDate) {
@@ -172,7 +276,7 @@ router.get('/review-stats', async (req, res) => {
     };
 
     const totalReviewsRes = await applyDateFilter(db('Review')).count('ReviewID as count').first();
-    const totalReviews = parseInt(totalReviewsRes.count, 10) || 0;
+    const totalReviews = parseInt(totalReviewsRes?.count, 10) || 0;
 
     const positiveRes = await applyDateFilter(db('Review'))
       .where(function() {
@@ -180,7 +284,7 @@ router.get('/review-stats', async (req, res) => {
       })
       .count('ReviewID as count')
       .first();
-    const totalPositiveReviews = parseInt(positiveRes.count, 10) || 0;
+    const totalPositiveReviews = parseInt(positiveRes?.count, 10) || 0;
 
     const negativeRes = await applyDateFilter(db('Review'))
       .where(function() {
@@ -188,7 +292,7 @@ router.get('/review-stats', async (req, res) => {
       })
       .count('ReviewID as count')
       .first();
-    const totalNegativeReviews = parseInt(negativeRes.count, 10) || 0;
+    const totalNegativeReviews = parseInt(negativeRes?.count, 10) || 0;
 
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -199,7 +303,7 @@ router.get('/review-stats', async (req, res) => {
       })
       .count('ReviewID as count')
       .first();
-    const alertsToday = parseInt(alertsTodayRes.count, 10) || 0;
+    const alertsToday = parseInt(alertsTodayRes?.count, 10) || 0;
 
     const recentNegativeReviews = await applyDateFilter(
       db('Review')
@@ -239,7 +343,7 @@ router.get('/review-stats', async (req, res) => {
     });
 
     let dateFormat = "UPPER(TO_CHAR(\"CreatedAt\", 'Mon'))";
-    if (timeframe === 'Per Day' || timeframe === 'Per Week') {
+    if (['Today', 'Per Day', 'This Week', 'Per Week'].includes(timeframe)) {
       dateFormat = "TO_CHAR(\"CreatedAt\", 'MM/DD')";
     }
 
@@ -286,27 +390,17 @@ router.get('/review-stats', async (req, res) => {
     return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
+
 // ==========================================
-// CHAT ANALYTICS ENDPOINT
+// 3. CHAT ANALYTICS ENDPOINT
 // ==========================================
 router.get('/chat-stats', async (req, res) => {
   try {
     const { timeframe = 'All-time' } = req.query;
+    const startDate = getStartDate(timeframe);
 
-    let startDate = null;
-    const now = new Date();
-
-    if (timeframe === 'Per Day') {
-      startDate = new Date(now.setHours(0, 0, 0, 0));
-    } else if (timeframe === 'Per Week') {
-      startDate = new Date(now.setDate(now.getDate() - 7));
-    } else if (timeframe === 'Per Month') {
-      startDate = new Date(now.setMonth(now.getMonth() - 1));
-    } else if (timeframe === 'Per Year') {
-      startDate = new Date(now.setFullYear(now.getFullYear() - 1));
-    }
-
-    const applyDateFilter = (query, dateCol = 'created_at') => {
+    // Filter using PascalCase 'CreatedAt' column
+    const applyDateFilter = (query, dateCol = 'CreatedAt') => {
       if (startDate) {
         return query.where(dateCol, '>=', startDate);
       }
@@ -314,25 +408,28 @@ router.get('/chat-stats', async (req, res) => {
     };
 
     // 1. Total Conversations Count
-    const totalConvsRes = await applyDateFilter(db('conversations')).count('id as count').first();
+    const totalConvsRes = await applyDateFilter(db('ChatSession')).count('* as count').first();
     const totalConversations = parseInt(totalConvsRes?.count, 10) || 0;
 
     // 2. Chatbot vs Human vs Unanswered Conversations
-    const chatbotHandledRes = await applyDateFilter(db('conversations'))
-      .where('handled_by', 'bot')
-      .count('id as count')
+    // Handover = false -> Handled by Bot
+    const chatbotHandledRes = await applyDateFilter(db('ChatSession'))
+      .where('Handover', false)
+      .count('* as count')
       .first();
     const chatbotHandled = parseInt(chatbotHandledRes?.count, 10) || 0;
 
-    const humanHandledRes = await applyDateFilter(db('conversations'))
-      .where('handled_by', 'human')
-      .count('id as count')
+    // Handover = true -> Handled by Human
+    const humanHandledRes = await applyDateFilter(db('ChatSession'))
+      .where('Handover', true)
+      .count('* as count')
       .first();
     const humanHandled = parseInt(humanHandledRes?.count, 10) || 0;
 
-    const unansweredRes = await applyDateFilter(db('conversations'))
-      .where('status', 'unanswered')
-      .count('id as count')
+    // Active = true -> Active / Unanswered Session
+    const unansweredRes = await applyDateFilter(db('ChatSession'))
+      .where('Active', true)
+      .count('* as count')
       .first();
     const unanswered = parseInt(unansweredRes?.count, 10) || 0;
 
@@ -347,68 +444,95 @@ router.get('/chat-stats', async (req, res) => {
     const humanInterventionPct = parseFloat(((humanHandled / pieTotal) * 100).toFixed(0));
 
     // 3. Total Flagged Customer & Bot Responses
-    const flaggedCustomerRes = await applyDateFilter(db('chat_messages'))
-      .where('sender_type', 'customer')
-      .where('is_flagged', true)
-      .count('id as count')
+    const flaggedCustomerRes = await applyDateFilter(
+      db('FlaggedMessages'),
+      'created_at'
+    )
+      .where('flagged_by', 'customer')
+      .count('* as count')
       .first();
     const totalFlaggedCustomer = parseInt(flaggedCustomerRes?.count, 10) || 0;
 
-    const flaggedBotRes = await applyDateFilter(db('chat_messages'))
-      .where('sender_type', 'bot')
-      .where('is_flagged', true)
-      .count('id as count')
+    const flaggedBotRes = await applyDateFilter(
+      db('FlaggedMessages'),
+      'created_at'
+    )
+      .where('flagged_by', 'bot')
+      .count('* as count')
       .first();
     const totalFlaggedBot = parseInt(flaggedBotRes?.count, 10) || 0;
 
     // 4. Flagged Message Detail Lists
     const flaggedCustomerList = await applyDateFilter(
-      db('chat_messages')
-        .select('id', 'conversation_id', 'message_text', 'created_at', 'flag_reason')
-        .where('sender_type', 'customer')
-        .where('is_flagged', true)
+      db('FlaggedMessages')
+        .select('*')
+        .where('flagged_by', 'customer')
         .orderBy('created_at', 'desc')
-        .limit(10)
+        .limit(10),
+      'created_at'
     );
 
     const flaggedBotList = await applyDateFilter(
-      db('chat_messages')
-        .select('id', 'conversation_id', 'message_text', 'created_at', 'flag_reason')
-        .where('sender_type', 'bot')
-        .where('is_flagged', true)
+      db('FlaggedMessages')
+        .select('*')
+        .where('flagged_by', 'bot')
         .orderBy('created_at', 'desc')
-        .limit(10)
+        .limit(10),
+      'created_at'
     );
 
-    // 5. Monthly Breakdown Chart (Conversations per month)
-    const monthlyChartRaw = await applyDateFilter(
-      db('conversations')
-        .select(
-          db.raw("UPPER(TO_CHAR(created_at, 'Mon')) as month_label"),
-          db.raw("EXTRACT(MONTH FROM created_at) as month_num"),
-          db.raw("COUNT(CASE WHEN handled_by = 'bot' THEN 1 END) as bot_count"),
-          db.raw("COUNT(CASE WHEN handled_by = 'human' THEN 1 END) as human_count")
-        )
-        .groupBy(db.raw("UPPER(TO_CHAR(created_at, 'Mon')), EXTRACT(MONTH FROM created_at)"))
-        .orderBy(db.raw("EXTRACT(MONTH FROM created_at)"), 'asc')
-    );
+    // 5. Chart Breakdown (Adapts dynamically to timeframe)
+    let chartData = [];
+    if (['Today', 'Per Day', 'This Week', 'Per Week'].includes(timeframe)) {
+      const dailyChartRaw = await applyDateFilter(
+        db('ChatSession')
+          .select(
+            db.raw("TO_CHAR(\"CreatedAt\", 'MM/DD') as day_label"),
+            db.raw("COUNT(CASE WHEN \"Handover\" = false THEN 1 END) as bot_count"),
+            db.raw("COUNT(CASE WHEN \"Handover\" = true THEN 1 END) as human_count")
+          )
+          .groupBy(db.raw("TO_CHAR(\"CreatedAt\", 'MM/DD')"))
+          .orderBy('day_label', 'asc')
+      );
 
-    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    const monthlyMap = new Map(monthlyChartRaw.map((m) => [m.month_label, m]));
+      chartData = dailyChartRaw.map((row) => ({
+        label: row.day_label,
+        chatbot: parseInt(row.bot_count, 10) || 0,
+        human: parseInt(row.human_count, 10) || 0
+      }));
+    } else {
+      const monthlyChartRaw = await applyDateFilter(
+        db('ChatSession')
+          .select(
+            db.raw("UPPER(TO_CHAR(\"CreatedAt\", 'Mon')) as month_label"),
+            db.raw("EXTRACT(MONTH FROM \"CreatedAt\") as month_num"),
+            db.raw("COUNT(CASE WHEN \"Handover\" = false THEN 1 END) as bot_count"),
+            db.raw("COUNT(CASE WHEN \"Handover\" = true THEN 1 END) as human_count")
+          )
+          .groupBy(
+            db.raw("UPPER(TO_CHAR(\"CreatedAt\", 'Mon')), EXTRACT(MONTH FROM \"CreatedAt\")")
+          )
+          .orderBy(db.raw("EXTRACT(MONTH FROM \"CreatedAt\")"), 'asc')
+      );
 
-    const chartData = months.map((m) => {
-      const match = monthlyMap.get(m);
-      return {
-        label: m,
-        chatbot: match ? parseInt(match.bot_count, 10) : 0,
-        human: match ? parseInt(match.human_count, 10) : 0
-      };
-    });
+      const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+      const monthlyMap = new Map(monthlyChartRaw.map((m) => [m.month_label, m]));
+
+      chartData = months.map((m) => {
+        const match = monthlyMap.get(m);
+        return {
+          label: m,
+          chatbot: match ? parseInt(match.bot_count, 10) : 0,
+          human: match ? parseInt(match.human_count, 10) : 0
+        };
+      });
+    }
 
     return res.json({
       success: true,
       data: {
         overview: {
+          totalConversations,
           usefulnessPct,
           humanInterventionPct,
           totalFlaggedCustomer,
@@ -432,4 +556,5 @@ router.get('/chat-stats', async (req, res) => {
     return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
+
 export default router;
