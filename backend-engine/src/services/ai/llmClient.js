@@ -1,4 +1,5 @@
 // src/services/ai/llmClient.js
+import { getConfig } from '../configService.js';
 
 /**
  * A centralized gateway for all AI model requests.
@@ -14,7 +15,8 @@ export async function callAI(prompt, options = {}) {
     // ROUTE 1: GEMINI (Current Default)
     // ---------------------------------------------------------
     if (provider === 'gemini') {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${process.env.GEMINI_API_KEY}`;
+      const geminiApiKey = await getConfig('GEMINI_API_KEY');
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${geminiApiKey}`;
       
       const generationConfig = { temperature: 0.0 };
       if (jsonMode) generationConfig.responseMimeType = "application/json";

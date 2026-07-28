@@ -1,11 +1,16 @@
 // src/services/ai/intentRouter.js
 import { callAI } from './llmClient.js';
+import { getKnowledgeBase } from '../configService.js';
 
 export async function routeIntent(text, language, bookingState, history) {
   const today = new Date().toISOString().split('T')[0];
-  
-  const lastAiMessage = history.length > 0 && history[history.length - 1].role === 'model' 
-    ? history[history.length - 1].parts[0].text 
+
+  // Inject the dynamic knowledge base so the router has company context
+  // when making intent decisions (e.g. detecting valid service mentions).
+  const knowledgeBaseText = await getKnowledgeBase();
+
+  const lastAiMessage = history.length > 0 && history[history.length - 1].role === 'model'
+    ? history[history.length - 1].parts[0].text
     : "";
 
   const prompt = `
@@ -16,7 +21,10 @@ export async function routeIntent(text, language, bookingState, history) {
     - booking (asking to schedule, OR answering booking follow-up questions, OR asking what services/specialists are available during a booking)
     - review (leaving feedback, rating, or complaint)
     - unknown (anything else)
-    
+
+    COMPANY CONTEXT (use this to better understand service-related terms):
+    ${knowledgeBaseText}
+
     Today's Date is: ${today}
 
     CONVERSATION HISTORY:
@@ -35,7 +43,12 @@ export async function routeIntent(text, language, bookingState, history) {
     3. ORPHAN AGREEMENT: IF the AI's Last Message is unrelated to an agent, and the user just says an agreement word out of nowhere, classify as 'unknown'.
 
     CRITICAL RULE: You must detect the language of the user's input. The possible output languages are 'en' (English), 'fr' (French), 'ar' (Arabic), or 'darija' (Moroccan Darija).
-    LANGUAGE DETECTION RULE: Do NOT change the detected language based on acronyms (like 'UI/UX'), single words (like 'Yes' or 'Ui'), or short ambiguous phrases. Only update the detected language if the user types a clear, multi-word sentence in a different language. Otherwise, maintain the current conversational language.
+    
+    STRICT DARIJA VS ARABIC RULES:
+    - If the user types "salam", "labas", "sava", "cv", or any Moroccan greeting/phrase in Latin script, you MUST classify the language as "darija", NOT "ar".
+    - "ar" is STRICTLY reserved ONLY for user messages written in the actual Arabic alphabet (e.g., "مرحبا", "كيف حالك").
+
+    LANGUAGE DETECTION RULE: Do NOT change the detected language based on acronyms (like 'UI/UX'), single words (like 'Yes' or 'Ui' outside of greetings), or short ambiguous phrases. Only update the detected language if the user types a clear, multi-word sentence in a different language. Otherwise, maintain the current conversational language.
 
     Respond with ONLY a raw JSON object (no Markdown formatting, no code blocks) with this exact schema:
     {

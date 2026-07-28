@@ -1,18 +1,18 @@
-import fs from 'fs';
-import path from 'path';
-import { callAI } from '../services/ai/llmClient.js'; // ✅ ADDED THIS IMPORT
-
-// 1. Load the knowledge base into memory
-const dataPath = path.resolve('src/data/faq-data.json');
-const faqKnowledge = fs.readFileSync(dataPath, 'utf-8');
+// src/handlers/faqHandler.js
+import { callAI } from '../services/ai/llmClient.js';
+import { getKnowledgeBase } from '../services/configService.js';
 
 export async function handleFaq(message, language, context) {
+  // Fetch the dynamic knowledge base at call time.
+  // Future: getKnowledgeBase() will return DB-sourced content (e.g. parsed PDFs).
+  const knowledgeBaseText = await getKnowledgeBase();
+
   const prompt = `
     You are a polite and helpful customer service assistant.
-    Analyze the user's question and check if the answer exists in the provided Knowledge Base.
+    Analyze the user's question and check if the answer exists in the provided Company Knowledge Base.
 
-    Knowledge Base:
-    ${faqKnowledge}
+    Company Knowledge Base:
+    ${knowledgeBaseText}
 
     User Question: "${message}"
     Requested Language: "${language}"
@@ -25,12 +25,10 @@ export async function handleFaq(message, language, context) {
   `;
 
   try {
-    // ✅ NEW WAY: Let the client handle the fetch logic!
     const aiReply = await callAI(prompt);
 
-    // 2. Handle the Fallback (Handover trigger)
+    // Handle the Fallback (Handover trigger)
     if (aiReply.trim() === 'NO_ANSWER_FOUND') {
-      // Define localized fallback messages
       const fallbacks = {
         fr: "Je suis désolé, je n'ai pas cette information. Souhaitez-vous que je vous transfère à un de nos agents ?",
         en: "I'm sorry, I don't have that information. Would you like me to transfer you to an agent?",
@@ -44,7 +42,6 @@ export async function handleFaq(message, language, context) {
       };
     }
 
-    // 3. Return the successful AI answer
     return {
       reply: aiReply,
       needsHandover: false

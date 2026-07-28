@@ -1,5 +1,6 @@
 // src/handlers/bookingHandler.js
 import { callAI } from '../services/ai/llmClient.js';
+import { insertEvent } from '../services/calendarService.js'; 
 
 // 🚀 DATABASE MOCK FUNCTION (Future-Proofed)
 async function fetchCompanyCatalogFromDB() {
@@ -12,29 +13,33 @@ async function fetchCompanyCatalogFromDB() {
     ],
     specialists: [
       { id: 101, name: "Sarah", department: "it", services: [1, 2] },
-      { id: 102, name: "Alex", department: "it", services: [1, 4] }, // FIXED: Alex now handles Service 4!
+      { id: 102, name: "Alex", department: "it", services: [1, 4] },
       { id: 103, name: "Karim", department: "design", services: [3] }
     ]
   };
 }
 
-// FIXED: Added botPhone as the 6th parameter
-export async function handleBooking(message, language, bookingState = {}, history = [], senderPhone = "", botPhone = "") {
+export async function handleBooking(message, language, bookingState = {}, history = [], senderPhone = "", botPhone = "", ioContext = {}) {
   // 1. Initialize State (Merged with server memory)
   let currentBookingState = {
     customer_name: null,
     contact_info: null,
-    department: null,
     specialist_name: null,
     service_requested: null,
     appointment_date: null,
     appointment_time: null,
     status: "pending",
     user_confirmed: false,
-    ...bookingState 
+    ...bookingState
   };
 
-  const today = new Date().toISOString().split('T')[0];
+  // 🚀 Dynamic local timezone locking
+  const today = new Date().toLocaleString('en-US', { 
+    timeZone: 'Africa/Casablanca',
+    dateStyle: 'full', 
+    timeStyle: 'short' 
+  });
+  
   const liveCatalog = await fetchCompanyCatalogFromDB();
 
   // 2. Extract Entities
@@ -123,6 +128,7 @@ export async function handleBooking(message, language, bookingState = {}, histor
   // 3. Waterfall Validation
   let botReply = "";
   let isComplete = false;
+  let adminAlertMsg = null; // 🚀 FIXED: Declared at the correct scope level!
   const lang = language || 'fr'; 
 
   const replies = {
@@ -176,11 +182,65 @@ export async function handleBooking(message, language, bookingState = {}, histor
     }
   };
 
-  // 🚀 THE MAGIC OVERRIDE
-  if (currentBookingState._temp_reply) {
-    botReply = currentBookingState._temp_reply;
-    delete currentBookingState._temp_reply;
+  // Always clean up the ephemeral reply field before any branch returns.
+  // Without this, _temp_reply leaks into the persisted bookingState in the gateway
+  // and can ghost-fire on a future message turn. [CRIT-5 fix]
+  const tempReply = currentBookingState._temp_reply || null;
+  delete currentBookingState._temp_reply;
+
+  // 🚀 THE MAGIC OVERRIDE (FIXED ORDER OF OPERATIONS)
+
+  // FIXED [CRIT-4]: Hard server-side guard. LLM prompts are a soft constraint —
+  // a hallucinating or jailbroken model could return user_confirmed=true with null
+  // fields. This gate vetoes that and forces the waterfall to re-ask the missing field.
+  const allRequiredFieldsPresent =
+    currentBookingState.customer_name &&
+    currentBookingState.contact_info &&
+    currentBookingState.appointment_date &&
+    currentBookingState.appointment_time;
+
+  if (currentBookingState.user_confirmed && !allRequiredFieldsPresent) {
+    console.error("⚠️ State machine guard: LLM set user_confirmed=true with missing fields. Vetoing.");
+    currentBookingState.user_confirmed = false;
   }
+
+  // 1. Highest Priority: If the user explicitly confirmed, finalize and trigger the Calendar
+  if (currentBookingState.user_confirmed) {
+    currentBookingState.status = "confirmed";
+    isComplete = true;
+    botReply = replies.finalConfirm[lang] || replies.finalConfirm['fr'];
+    
+    // 🚀 THE CALENDAR EVENT TRIGGER
+    try {
+      const calendarLink = await insertEvent(currentBookingState, ioContext);
+      
+      // ✅ Mark as synced for your future database/dashboard
+      currentBookingState.calendar_synced = true; 
+
+      if (calendarLink) {
+        const calendarAppend = {
+          fr: `\n\n📅 Ajoutez-le à votre calendrier : ${calendarLink}`,
+          en: `\n\n📅 Add it to your calendar: ${calendarLink}`,
+          ar: `\n\n📅 أضفه إلى تقويمك : ${calendarLink}`,
+          darija: `\n\n📅 Zidha f l-calendrier dyalek : ${calendarLink}`
+        };
+        botReply += calendarAppend[lang] || calendarAppend['fr'];
+      }
+    } catch (error) {
+      console.error("Failed to generate Google Calendar link:", error);
+      
+      // ❌ Flag as failed so it pops up as an error on your future dashboard
+      currentBookingState.calendar_synced = false;
+      
+      // 🚨 Draft the emergency text message for the admin
+      adminAlertMsg = `⚠️ URGENT: Calendar sync failed for ${currentBookingState.customer_name}. Please add manually. \nDate: ${currentBookingState.appointment_date}\nTime: ${currentBookingState.appointment_time}\nContact: ${currentBookingState.contact_info}`;
+    }
+  }
+  // 2. Medium Priority: If not confirmed yet, did the AI generate a custom Q&A/Warning?
+  else if (tempReply) {
+    botReply = tempReply;
+  }
+  // 3. Lowest Priority: The standard hardcoded fallback questions
   else if (!currentBookingState.service_requested) botReply = replies.askService[lang] || replies.askService['fr'];
   else if (!currentBookingState.specialist_name) botReply = replies.askSpecialist[lang] || replies.askSpecialist['fr'];
   else if (!currentBookingState.appointment_date) botReply = replies.askDate[lang] || replies.askDate['fr'];
@@ -188,15 +248,11 @@ export async function handleBooking(message, language, bookingState = {}, histor
   else if (!currentBookingState.customer_name) botReply = replies.askName[lang] || replies.askName['fr'];
   else if (!currentBookingState.contact_info) botReply = replies.askContact[lang] || replies.askContact['fr'];
   else if (!currentBookingState.user_confirmed) botReply = replies.askConfirmation[lang] || replies.askConfirmation['fr'];
-  else {
-    currentBookingState.status = "confirmed";
-    isComplete = true;
-    botReply = replies.finalConfirm[lang] || replies.finalConfirm['fr'];
-  }
 
   return {
     reply: botReply,
     needsHandover: false,
+    adminAlert: adminAlertMsg,
     newContext: isComplete ? null : { bookingState: currentBookingState }
   };
 }

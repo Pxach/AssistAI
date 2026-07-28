@@ -6,8 +6,8 @@ import { handleFaq } from '../handlers/faqHandler.js';
 import { handleHandover } from '../handlers/handoverHandler.js';
 import { handleBooking } from '../handlers/bookingHandler.js';
 
-// FIXED: Signature updated to accept senderPhone and botPhone from whatsappGateway.js
-export async function processUserMessage(rawInput, language = 'fr', history = [], bookingState = {}, senderPhone = "", botPhone = "") {
+// FIXED: Signature updated to accept senderPhone, botPhone, and ioContext from whatsappGateway.js
+export async function processUserMessage(rawInput, language = 'fr', history = [], bookingState = {}, senderPhone = "", botPhone = "", ioContext = {}) {
   
   // 1. Interactive Button Interceptor (Bypass AI & Sanitization)
   if (typeof rawInput === 'object' && rawInput.type === 'interactive_button') {
@@ -67,8 +67,18 @@ export async function processUserMessage(rawInput, language = 'fr', history = []
   }
 
   // 3. Security Check & Sanitization
-  const securityResult = await sanitizeInput(textToProcess);
-  
+  let securityResult;
+  try {
+    securityResult = await sanitizeInput(textToProcess);
+  } catch (error) {
+    console.error("Security sanitizer threw an unexpected error:", error);
+    return {
+      status: 'error',
+      metadata: { intent: 'unknown', detectedLanguage: language },
+      data: { reply: "Une erreur interne s'est produite. Veuillez réessayer.", needsHandover: false, newContext: bookingState }
+    };
+  }
+
   if (!securityResult.safe) {
     const securityFallbackReplies = {
       fr: "Je suis désolé, je ne peux pas traiter cette demande. Comment puis-je vous aider autrement ?",
@@ -95,12 +105,41 @@ export async function processUserMessage(rawInput, language = 'fr', history = []
 
   const cleanText = securityResult.cleanText;
 
-  // 4. Intent Routing
-  const routerResponse = await routeIntent(cleanText, language, bookingState, history);
+  // 4. Intent Routing (Keyword Interceptor or LLM Classification)
+  const handoverKeywords = [
+    // English
+    /\b(human|agent|manager|support|live help|representative)\b/i,
+    // French
+    /\b(humain|agent|conseiller|responsable|directeur|personne)\b/i,
+    // Darija & Arabic transliterations
+    /\b(bnadem|insan|3amil|director|manager)\b/i,
+    /nhdr m3a/i,
+    /dwi m3a/i,
+    /tkelm m3a/i,
+    // Arabic script
+    /إنسان/i,
+    /بشري/i,
+    /عميل/i,
+    /مدير/i,
+    /مساعدة/i
+  ];
 
-  const aiIntent = typeof routerResponse === 'string' ? routerResponse : routerResponse.intent;
-  let aiDetectedLang = typeof routerResponse === 'object' ? routerResponse.detectedLanguage : language;
-  const aiHandoverReason = typeof routerResponse === 'object' ? routerResponse.handoverReason : "";
+  const matchesHandoverKeyword = handoverKeywords.some(regex => regex.test(cleanText));
+
+  let aiIntent;
+  let aiDetectedLang = language;
+  let aiHandoverReason = "";
+
+  if (matchesHandoverKeyword) {
+    console.log(`🔍 Handover keyword matched for user input: "${cleanText}"`);
+    aiIntent = 'handover';
+    aiHandoverReason = "Triggered by user escalation keyword.";
+  } else {
+    const routerResponse = await routeIntent(cleanText, language, bookingState, history);
+    aiIntent = typeof routerResponse === 'string' ? routerResponse : routerResponse.intent;
+    aiDetectedLang = typeof routerResponse === 'object' ? routerResponse.detectedLanguage : language;
+    aiHandoverReason = typeof routerResponse === 'object' ? routerResponse.handoverReason : "";
+  }
 
   // SMART STICKY LANGUAGE LOCK:
   // If we are booking, prevent English/French terms (like "Brand Consultation") from overwriting Darija/Arabic.
@@ -126,8 +165,8 @@ export async function processUserMessage(rawInput, language = 'fr', history = []
       break;
 
     case 'booking': 
-      // FIXED: Passed bookingState, history, senderPhone, AND botPhone to the booking handler
-      handlerResult = await handleBooking(cleanText, activeLang, bookingState, history, senderPhone, botPhone);
+      // FIXED: Passed bookingState, history, senderPhone, botPhone, AND ioContext to the booking handler
+      handlerResult = await handleBooking(cleanText, activeLang, bookingState, history, senderPhone, botPhone, ioContext);
       break;
 
     case 'unknown':
@@ -152,7 +191,6 @@ export async function processUserMessage(rawInput, language = 'fr', history = []
     status: 'success',
     metadata: {
       intent: aiIntent,
-      language: activeLang,
       detectedLanguage: aiDetectedLang,
       handoverReason: aiHandoverReason
     },
