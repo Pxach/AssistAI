@@ -79,12 +79,14 @@ export async function up(knex) {
       table.string('status').defaultTo('pending');
       table.boolean('review_prompt_sent').defaultTo(false);
       table.timestamp('created_at').defaultTo(knex.fn.now());
+      table.boolean('reminder_sent').defaultTo(false);
     })
     // 9. ChatSession Table
     .createTable('ChatSession', (table) => {
       table.string('PhoneNumber').primary();
       table.boolean('Active').defaultTo(true);
       table.boolean('Handover').defaultTo(false);
+      table.string('Status').defaultTo('active');
       table.string('Sentiment');
       table.timestamp('CreatedAt').defaultTo(knex.fn.now());
     })
@@ -115,7 +117,7 @@ export async function up(knex) {
       table.boolean('handover').defaultTo(false);
       table.string('sentiment').nullable();
       table.string('handled_by').defaultTo('bot');
-      table.string('status').defaultTo('completed');
+      table.string('status').defaultTo('active');
       table.timestamp('created_at').defaultTo(knex.fn.now());
     })
     // 13. FlaggedMessages Table
