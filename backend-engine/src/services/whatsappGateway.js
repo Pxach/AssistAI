@@ -94,67 +94,73 @@ export async function connectToWhatsApp(io, sessionKey) {
     });
 
     sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect, qr } = update;
+        try {
+            const { connection, lastDisconnect, qr } = update;
 
-        if (qr) {
-            console.log("📲 Scan this QR code with your WhatsApp to link the bot:");
-            qrcodeTerminal.generate(qr, { small: true });
+            if (qr) {
+                console.log("📲 Scan this QR code with your WhatsApp to link the bot:");
+                qrcodeTerminal.generate(qr, { small: true });
 
-            if (io && sessionKey) {
-                try {
-                    const base64QrImage = await QRCode.toDataURL(qr);
-                    io.to(sessionKey).emit('whatsapp:qr', { qrCode: base64QrImage });
+                if (io && sessionKey) {
+                    try {
+                        const base64QrImage = await QRCode.toDataURL(qr);
+                        io.to(sessionKey).emit('whatsapp:qr', { qrCode: base64QrImage });
 
-                    // ── HTTP PATCH: notify dashboard of PAIRING state ──────────
-                    patchSessionStatus({
-                        sessionKey,
-                        status: 'PAIRING',
-                        phoneNumber: null,
-                        qrCode: base64QrImage,
-                        connectedAt: new Date().toISOString(),
-                    });
-                } catch (err) {
-                    console.error('❌ Failed to generate base64 QR code:', err);
+                        // ── HTTP PATCH: notify dashboard of PAIRING state ──────────
+                        patchSessionStatus({
+                            sessionKey,
+                            status: 'PAIRING',
+                            phoneNumber: null,
+                            qrCode: base64QrImage,
+                            connectedAt: new Date().toISOString(),
+                        });
+                    } catch (err) {
+                        console.error('❌ Failed to generate base64 QR code:', err);
+                    }
                 }
             }
-        }
 
-        if (connection === 'close') {
-            // FIXED [CRIT-2]: Optional chaining was incorrectly applied to the boolean result
-            // of `instanceof`. It must wrap the error object itself before checking statusCode.
-            const shouldReconnect = (lastDisconnect?.error instanceof Boom) &&
-                lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            if (connection === 'close') {
+                // FIXED [CRIT-2]: Optional chaining was incorrectly applied to the boolean result
+                // of `instanceof`. It must wrap the error object itself before checking statusCode.
+                const shouldReconnect = (lastDisconnect?.error instanceof Boom) &&
+                    lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
 
-            console.log('❌ Connection closed. Reconnecting:', shouldReconnect);
+                console.log('❌ Connection closed. Reconnecting:', shouldReconnect);
 
-            // ── HTTP PATCH: notify dashboard of DISCONNECTED state ─────────────
-            patchSessionStatus({
-                sessionKey: sessionKey || 'default',
-                status: 'DISCONNECTED',
-                phoneNumber: null,
-                qrCode: null,
-                connectedAt: new Date().toISOString(),
-            });
-
-            if (shouldReconnect) {
-                connectToWhatsApp(io, sessionKey);
-            }
-        } else if (connection === 'open') {
-            console.log('✅ WhatsApp Bot Connected & Ready!');
-            if (io && sessionKey) {
-                const rawId = sock.user?.id || '';
-                const phoneNumber = rawId ? rawId.split(':')[0].split('@')[0] : '';
-                io.to(sessionKey).emit('whatsapp:status_change', { status: 'CONNECTED', phoneNumber: phoneNumber });
-
-                // ── HTTP PATCH: notify dashboard of CONNECTED state ────────────
+                // ── HTTP PATCH: notify dashboard of DISCONNECTED state ─────────────
                 patchSessionStatus({
-                    sessionKey,
-                    status: 'CONNECTED',
-                    phoneNumber,
+                    sessionKey: sessionKey || 'default',
+                    status: 'DISCONNECTED',
+                    phoneNumber: null,
                     qrCode: null,
                     connectedAt: new Date().toISOString(),
                 });
+
+                if (shouldReconnect) {
+                    // Prevent memory leak: remove old listeners before recreating the socket
+                    sock.ev.removeAllListeners();
+                    connectToWhatsApp(io, sessionKey);
+                }
+            } else if (connection === 'open') {
+                console.log('✅ WhatsApp Bot Connected & Ready!');
+                if (io && sessionKey) {
+                    const rawId = sock.user?.id || '';
+                    const phoneNumber = rawId ? rawId.split(':')[0].split('@')[0] : '';
+                    io.to(sessionKey).emit('whatsapp:status_change', { status: 'CONNECTED', phoneNumber: phoneNumber });
+
+                    // ── HTTP PATCH: notify dashboard of CONNECTED state ────────────
+                    patchSessionStatus({
+                        sessionKey,
+                        status: 'CONNECTED',
+                        phoneNumber,
+                        qrCode: null,
+                        connectedAt: new Date().toISOString(),
+                    });
+                }
             }
+        } catch (error) {
+            console.error('❌ Fatal error in connection.update handler:', error);
         }
     });
 

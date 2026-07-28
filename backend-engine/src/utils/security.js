@@ -1,4 +1,5 @@
 // src/utils/security.js
+import { callAI } from '../services/ai/llmClient.js';
 
 /**
  * Uses Gemini to evaluate if a user input contains prompt injection or jailbreak attempts.
@@ -30,23 +31,7 @@ export async function sanitizeInput(input) {
   `;
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${process.env.GEMINI_API_KEY}`;
-    
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: systemPrompt }] }],
-        generationConfig: {
-          temperature: 0.0 // 0.0 means zero creativity, strictly analytical
-        }
-      })
-    });
-
-    if (!response.ok) throw new Error(`Security API Error: ${response.status}`);
-    
-    const data = await response.json();
-    const evaluation = data.candidates[0].content.parts[0].text.trim();
+    const evaluation = await callAI(systemPrompt);
 
     if (evaluation === 'MALICIOUS') {
       return {
@@ -64,11 +49,12 @@ export async function sanitizeInput(input) {
     };
 
   } catch (error) {
-    console.error("Security Classifier Error:", error);
-    // Fail-safe: If the security check fails due to network issues, block the message to be safe
+    console.error("🚨 CRITICAL: Security Classifier Error (Fail-Open):", error.message);
+    // Graceful Timeout: If the security check fails due to network issues,
+    // allow the message through rather than paralyzing the entire bot.
     return {
-      safe: false,
-      reason: 'SECURITY_CHECK_FAILED',
+      safe: true,
+      reason: 'SECURITY_CHECK_UNVERIFIED_TIMEOUT',
       cleanText: clean
     };
   }
