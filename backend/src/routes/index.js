@@ -4,7 +4,15 @@ import authRoutes from './authRoutes.js';
 import reviewRoutes from './reviewRoutes.js';
 import handoverRoutes from './handoverRoutes.js';
 import dashboardRoutes from './dashboardRoutes.js';
-
+import {
+  getStatus,
+  connectWhatsApp,
+  disconnectWhatsApp,
+  sendHumanMessage,
+  getActiveSessions,
+  getChatLogs,
+  toggleHandover 
+} from '../controllers/whatsappController.js';
 const router = express.Router();
 
 router.use('/appointments', appointmentRoutes);

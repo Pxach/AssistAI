@@ -7,7 +7,9 @@ import {
   Calendar, 
   Download, 
   Loader2,
-  Home
+  Home,
+  Headphones,
+  Smartphone
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -123,69 +125,81 @@ export default function BookingAnalyticsPage() {
     <div className="flex h-screen bg-[#F8F9FD] text-slate-800 font-sans overflow-hidden">
       
       {/* SIDEBAR */}
-      <aside className="w-64 bg-[#7C5CFC] text-white flex flex-col justify-between p-6 shadow-lg shrink-0">
-        <div>
-          {/* Navigation Links */}
-          <nav className="space-y-6 mt-6">
-            <Link 
-              href="/dashboard" 
-              className="flex items-center space-x-3 w-full text-left font-medium hover:opacity-80 transition"
-            >
-              <Home className="w-5 h-5" />
-              <span>Home Page</span>
-            </Link>
+<aside className="w-64 bg-[#7C5CFC] text-white flex flex-col justify-between p-6 shadow-lg shrink-0">
+  <div>
+    {/* Navigation Links */}
+    <nav className="space-y-6 mt-6">
+      {/* 1. Home Page */}
+      <Link 
+        href="/dashboard" 
+        className="flex items-center space-x-3 w-full text-left font-medium hover:opacity-80 transition"
+      >
+        <Home className="w-5 h-5" />
+        <span>Home Page</span>
+      </Link>
 
-            <Link 
-              href="/chat-analytics" 
-              className="flex items-center space-x-3 w-full text-left font-medium hover:opacity-80 transition"
-            >
-              <MessageSquare className="w-5 h-5" />
-              <span>Chat Analytics</span>
-            </Link>
+      {/* 2. Chat Analytics */}
+      <Link 
+        href="/chat-analytics" 
+        className="flex items-center space-x-3 w-full text-left font-medium hover:opacity-80 transition"
+      >
+        <MessageSquare className="w-5 h-5" />
+        <span>Chat Analytics</span>
+      </Link>
 
-            <Link 
-              href="/review-analytics" 
-              className="flex items-center space-x-3 w-full text-left font-medium hover:opacity-80 transition"
-            >
-              <Star className="w-5 h-5" />
-              <span>Review Analytics</span>
-            </Link>
-
-            <Link 
-              href="/booking-analytics" 
-              className="flex items-center space-x-3 w-full text-left font-medium hover:opacity-80 transition"
-            >
-              <Calendar className="w-5 h-5" />
-              <span>Booking Analytics</span>
-            </Link>
-
-            <button 
-              onClick={handleCsvDownload}
-              className="flex items-center space-x-3 w-full text-left font-medium hover:opacity-80 transition pt-2"
-            >
-              <Download className="w-5 h-5" />
-              <span>Download as CSV</span>
-            </button>
-          </nav>
+      {/* 3. Live Intervention Hub */}
+      <Link 
+        href="/LiveIntervention" 
+        className="flex items-center justify-between w-full font-medium hover:opacity-80 transition group"
+      >
+        <div className="flex items-center space-x-3">
+          <Headphones className="w-5 h-5" />
+          <span>Live Intervention</span>
         </div>
+        <span className="flex items-center text-[10px] bg-red-500/20 text-red-200 border border-red-400/40 font-bold px-2 py-0.5 rounded-full">
+          <span className="w-1.5 h-1.5 bg-red-400 rounded-full animate-ping mr-1" />
+          LIVE
+        </span>
+      </Link>
 
-        {/* Sidebar Footer */}
-        <div className="border-t border-white/20 pt-4">
-          <h2 className="font-bold text-lg mb-4">AssistAI</h2>
-          <div className="flex items-center space-x-3">
-            {/* Dynamic Avatar showing User Initial */}
-            <div className="w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center font-bold text-base shrink-0">
-              {user.email ? user.email[0].toUpperCase() : 'U'}
-            </div>
-            
-            {/* Dynamic User Information */}
-            <div className="text-sm min-w-0 flex-1">
-              <p className="font-semibold leading-tight truncate">{user.name}</p>
-              <p className="text-xs text-white/70 truncate">{user.email}</p>
-            </div>
-          </div>
-        </div>
-      </aside>
+      {/* 4. Connect Device */}
+      <Link 
+        href="/connect-device" 
+        className="flex items-center space-x-3 w-full text-left font-medium hover:opacity-80 transition"
+      >
+        <Smartphone className="w-5 h-5" />
+        <span>Connect Device</span>
+      </Link>
+
+      {/* 5. Review Analytics */}
+      <Link 
+        href="/review-analytics" 
+        className="flex items-center space-x-3 w-full text-left font-medium hover:opacity-80 transition"
+      >
+        <Star className="w-5 h-5" />
+        <span>Review Analytics</span>
+      </Link>
+
+      {/* 6. Booking Analytics */}
+      <Link 
+        href="/booking-analytics" 
+        className="flex items-center space-x-3 w-full text-left font-medium hover:opacity-80 transition"
+      >
+        <Calendar className="w-5 h-5" />
+        <span>Booking Analytics</span>
+      </Link>
+
+      {/* 7. Download Action */}
+      <button 
+        onClick={handleCsvDownload}
+        className="flex items-center space-x-3 w-full text-left font-medium hover:opacity-80 transition pt-2"
+      >
+        <Download className="w-5 h-5" />
+        <span>Download as CSV</span>
+      </button>
+    </nav>
+  </div>
+</aside>
 
       {/* MAIN CONTENT AREA */}
       <main className="flex-1 overflow-y-auto p-8 min-w-0">

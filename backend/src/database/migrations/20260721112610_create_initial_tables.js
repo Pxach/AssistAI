@@ -23,28 +23,40 @@ export async function up(knex) {
       table.string('Password').notNullable();
       table.string('Role').defaultTo('admin');
     })
-    // 3. Customer Table
+    // 3. WhatsApp Sessions Table (NEW: Tracks QR Pairing & Baileys Session State)
+    .createTable('whatsapp_sessions', (table) => {
+      table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
+      table.uuid('company_id').references('CompanyID').inTable('Company').onDelete('CASCADE').nullable();
+      table.string('phone_number').nullable();
+      table.string('status').defaultTo('DISCONNECTED'); // 'DISCONNECTED' | 'PAIRING' | 'CONNECTED'
+      table.text('qr_code').nullable(); // Stores raw QR string or base64 image
+      table.string('session_key').unique().defaultTo('default'); // Identifier used by Baileys for local auth folder
+      table.timestamp('connected_at').nullable();
+      table.timestamp('created_at').defaultTo(knex.fn.now());
+      table.timestamp('updated_at').defaultTo(knex.fn.now());
+    })
+    // 4. Customer Table
     .createTable('Customer', (table) => {
       table.uuid('CustomerID').primary().defaultTo(knex.raw('gen_random_uuid()'));
       table.string('PhoneNumber').notNullable().unique();
       table.string('Name');
       table.string('PreferredLanguage').defaultTo('English');
     })
-    // 4. Services Table
+    // 5. Services Table
     .createTable('services', (table) => {
       table.increments('id').primary();
       table.string('name').notNullable();
       table.string('department').notNullable();
       table.integer('duration_minutes').defaultTo(60);
     })
-    // 5. Specialists Table
+    // 6. Specialists Table
     .createTable('specialists', (table) => {
       table.increments('id').primary();
       table.string('name').notNullable();
       table.string('department').notNullable();
       table.string('calendar_id').nullable();
     })
-    // 6. Specialist Services Junction Table
+    // 7. Specialist Services Junction Table
     .createTable('specialist_services', (table) => {
       table.integer('specialist_id').unsigned().notNullable()
         .references('id').inTable('specialists').onDelete('CASCADE');
@@ -52,7 +64,7 @@ export async function up(knex) {
         .references('id').inTable('services').onDelete('CASCADE');
       table.primary(['specialist_id', 'service_id']);
     })
-    // 7. Appointments Table
+    // 8. Appointments Table
     .createTable('appointments', (table) => {
       table.increments('id').primary();
       table.string('customer_name').notNullable();
@@ -68,7 +80,7 @@ export async function up(knex) {
       table.boolean('review_prompt_sent').defaultTo(false);
       table.timestamp('created_at').defaultTo(knex.fn.now());
     })
-    // 8. ChatSession Table
+    // 9. ChatSession Table
     .createTable('ChatSession', (table) => {
       table.string('PhoneNumber').primary();
       table.boolean('Active').defaultTo(true);
@@ -76,14 +88,16 @@ export async function up(knex) {
       table.string('Sentiment');
       table.timestamp('CreatedAt').defaultTo(knex.fn.now());
     })
-    // 9. ChatLogs Table
+    // 10. ChatLogs Table (UPDATED: Added sender_type & PhoneNumber reference for live intervention)
     .createTable('ChatLogs', (table) => {
       table.uuid('ChatID').primary().defaultTo(knex.raw('gen_random_uuid()'));
-      table.uuid('CustomerID').references('CustomerID').inTable('Customer').onDelete('CASCADE');
+      table.uuid('CustomerID').references('CustomerID').inTable('Customer').onDelete('CASCADE').nullable();
+      table.string('PhoneNumber').references('PhoneNumber').inTable('ChatSession').onDelete('CASCADE').nullable();
+      table.string('sender_type').defaultTo('customer'); // 'customer' | 'bot' | 'human_agent'
       table.text('message').notNullable();
       table.timestamp('CreatedAt').defaultTo(knex.fn.now());
     })
-    // 10. Review Table
+    // 11. Review Table
     .createTable('Review', (table) => {
       table.uuid('ReviewID').primary().defaultTo(knex.raw('gen_random_uuid()'));
       table.uuid('CustomerID').references('CustomerID').inTable('Customer').onDelete('CASCADE');
@@ -93,7 +107,7 @@ export async function up(knex) {
       table.timestamp('CreatedAt').defaultTo(knex.fn.now());
       table.string('Category');
     })
-    // 11. Conversations Table (Required for Chat Analytics Queries)
+    // 12. Conversations Table (Required for Chat Analytics Queries)
     .createTable('conversations', (table) => {
       table.increments('id').primary();
       table.uuid('customer_id').references('CustomerID').inTable('Customer').onDelete('CASCADE').nullable();
@@ -104,7 +118,7 @@ export async function up(knex) {
       table.string('status').defaultTo('completed');
       table.timestamp('created_at').defaultTo(knex.fn.now());
     })
-    // 12. FlaggedMessages Table
+    // 13. FlaggedMessages Table
     .createTable('FlaggedMessages', (table) => {
       table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
       table.integer('conversation_id').references('id').inTable('conversations').onDelete('CASCADE').nullable();
@@ -115,12 +129,23 @@ export async function up(knex) {
     });
 
   // ---------------------------------------------------------------------------
-  // 2. SEED MOCK DATA FOR CHAT ANALYTICS TESTING
+  // 2. SEED MOCK DATA FOR CHAT ANALYTICS & WHATSAPP SESSIONS TESTING
   // ---------------------------------------------------------------------------
 
   const now = new Date();
   const hoursAgo = (h) => new Date(now.getTime() - h * 60 * 60 * 1000);
   const daysAgo = (d) => new Date(now.getTime() - d * 24 * 60 * 60 * 1000);
+
+  // Seed Default WhatsApp Session
+  await knex('whatsapp_sessions').insert([
+    {
+      session_key: 'default',
+      status: 'DISCONNECTED',
+      phone_number: null,
+      qr_code: null,
+      connected_at: null
+    }
+  ]);
 
   // Seed Customers
   const insertedCustomers = await knex('Customer')
@@ -148,6 +173,14 @@ export async function up(knex) {
     { PhoneNumber: c6.PhoneNumber, Active: false, Handover: false, Sentiment: 'Positive', CreatedAt: daysAgo(22) },
     { PhoneNumber: c7.PhoneNumber, Active: false, Handover: true, Sentiment: 'Negative', CreatedAt: daysAgo(90) },
     { PhoneNumber: c8.PhoneNumber, Active: false, Handover: false, Sentiment: 'Positive', CreatedAt: daysAgo(180) },
+  ]);
+
+  // Seed Chat Logs with sender_type
+  await knex('ChatLogs').insert([
+    { CustomerID: c1.CustomerID, PhoneNumber: c1.PhoneNumber, sender_type: 'customer', message: 'Hello, I want to book an appointment.', CreatedAt: hoursAgo(2) },
+    { CustomerID: c1.CustomerID, PhoneNumber: c1.PhoneNumber, sender_type: 'bot', message: 'Sure! What date works best for you?', CreatedAt: hoursAgo(2) },
+    { CustomerID: c2.CustomerID, PhoneNumber: c2.PhoneNumber, sender_type: 'customer', message: 'Your bot is giving me incorrect answers.', CreatedAt: hoursAgo(5) },
+    { CustomerID: c2.CustomerID, PhoneNumber: c2.PhoneNumber, sender_type: 'human_agent', message: 'Hi Bob, human support agent stepping in here. How can I help?', CreatedAt: hoursAgo(4) },
   ]);
 
   // Seed Conversations
@@ -240,6 +273,7 @@ export async function down(knex) {
     .dropTableIfExists('specialists')
     .dropTableIfExists('services')
     .dropTableIfExists('Customer')
+    .dropTableIfExists('whatsapp_sessions')
     .dropTableIfExists('AdminUser')
     .dropTableIfExists('Company');
 }
