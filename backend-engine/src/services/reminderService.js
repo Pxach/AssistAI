@@ -2,6 +2,7 @@
 import cron from 'node-cron';
 import { armFeedbackFlag } from './whatsappGateway.js';
 import { checkFeedbackEligibility } from './feedbackEligibility.js';
+import { strings, getLocaleString } from '../locales/strings.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MOCK DATA LAYER
@@ -79,33 +80,12 @@ async function fetchAppointmentsEndedToday() {
   ];
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// LOCALIZED REMINDER TEMPLATES
-// Add new languages here as needed. The template function receives the full
-// appointment object and returns a formatted string.
-// ─────────────────────────────────────────────────────────────────────────────
-
-const reminderTemplates = {
-  fr: (appt) =>
-    `📅 *Rappel de rendez-vous*\n\nBonjour ${appt.clientName} ! Votre rendez-vous *${appt.service}* avec *${appt.specialist}* est prévu *demain à ${appt.appointmentTime}*.\n\nSi vous devez annuler ou reporter, veuillez nous contacter dès que possible.`,
-
-  en: (appt) =>
-    `📅 *Appointment Reminder*\n\nHello ${appt.clientName}! Your *${appt.service}* appointment with *${appt.specialist}* is scheduled for *tomorrow at ${appt.appointmentTime}*.\n\nIf you need to cancel or reschedule, please contact us as soon as possible.`,
-
-  ar: (appt) =>
-    `📅 *تذكير بالموعد*\n\nمرحباً ${appt.clientName}! موعدك لـ *${appt.service}* مع *${appt.specialist}* مقرر *غداً في تمام الساعة ${appt.appointmentTime}*.\n\nإذا كنت بحاجة إلى الإلغاء أو التغيير، يرجى الاتصال بنا في أقرب وقت.`,
-
-  darija: (appt) =>
-    `📅 *Reminder d lmawid*\n\nSalam ${appt.clientName}! Lmawid dyalek dyal *${appt.service}* m3a *${appt.specialist}* ghadi ykoun *ghedda f ${appt.appointmentTime}*.\n\nIla bghiti tannuli aw tbeddel lwaqt, kellmna bekri.`
-};
-
 /**
  * Builds a localized reminder message. Falls back to French if the client's
  * language has no template defined.
  */
 function buildReminderMessage(appt) {
-  const templateFn = reminderTemplates[appt.language] || reminderTemplates['fr'];
-  return templateFn(appt);
+  return getLocaleString(strings.reminder.appointmentReminder, appt.language, appt);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -146,25 +126,6 @@ export async function sendDailyReminders(sock) {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FEEDBACK PROMPT TEMPLATES
-// Sent proactively after an appointment concludes. Presents a 3-option menu.
-// ─────────────────────────────────────────────────────────────────────────────
-
-const feedbackPromptTemplates = {
-  fr: (appt) =>
-    `⭐ *Votre avis compte !*\n\nBonjour ${appt.clientName}, votre rendez-vous *${appt.service}* de ${appt.appointmentTime} est terminé.\n\nComment s'est passée votre expérience ?\n\n*1* — Bien 👍\n*2* — Moyen 😐\n*3* — Mauvais 👎`,
-
-  en: (appt) =>
-    `⭐ *Your feedback matters!*\n\nHello ${appt.clientName}, your *${appt.service}* appointment at ${appt.appointmentTime} has concluded.\n\nHow was your experience?\n\n*1* — Good 👍\n*2* — Average 😐\n*3* — Bad 👎`,
-
-  ar: (appt) =>
-    `⭐ *رأيك يهمنا!*\n\nمرحباً ${appt.clientName}، انتهى موعدك لـ *${appt.service}* الساعة ${appt.appointmentTime}.\n\nكيف كانت تجربتك؟\n\n*1* — جيد 👍\n*2* — متوسط 😐\n*3* — سيئ 👎`,
-
-  darija: (appt) =>
-    `⭐ *Ra'yek mhim 3lina!*\n\nSalam ${appt.clientName}, lmawid dyalek dyal *${appt.service}* f ${appt.appointmentTime} tmm.\n\nKifach kanet l-expérience dyalek?\n\n*1* — Mzyan 👍\n*2* — Wsat 😐\n*3* — Khayb 👎`
-};
-
 /**
  * Arms the feedback flag on each completed appointment's session and sends
  * the localized 3-option rating prompt.
@@ -204,8 +165,7 @@ export async function sendFeedbackRequests(sock) {
       armFeedbackFlag(appt.clientJid, appt.language);
 
       // 2. Send the rating prompt
-      const templateFn = feedbackPromptTemplates[appt.language] || feedbackPromptTemplates['fr'];
-      const message = templateFn(appt);
+      const message = getLocaleString(strings.reminder.feedbackPrompt, appt.language, appt);
       await sock.sendMessage(appt.clientJid, { text: message });
 
       console.log(`✅ Feedback prompt sent to ${appt.clientJid} (${appt.clientName}).`);

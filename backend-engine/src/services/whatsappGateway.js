@@ -9,6 +9,7 @@ import QRCode from 'qrcode';
 import { processUserMessage } from '../controllers/chatController.js';
 import { handleFeedback } from '../handlers/feedbackHandler.js';
 import { patchSessionStatus } from './sessionSyncService.js';
+import { strings, getLocaleString } from '../locales/strings.js';
 
 const ADMIN_JID = '212663095839@s.whatsapp.net'; // TODO: Update with real manager JID
 const INACTIVITY_LIMIT = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
@@ -379,13 +380,7 @@ export async function connectToWhatsApp(io, sessionKey) {
                 session.status = "escalated_to_human";
 
                 const lang = session.clientLanguage;
-                const loopBreakMessages = {
-                    fr: "Je suis désolé, j'ai du mal à vous comprendre. Je vous transfère maintenant à un agent humain qui pourra mieux vous aider.",
-                    en: "I'm sorry, I'm having trouble understanding you. I am now transferring you to a human agent who can assist you better.",
-                    ar: "أنا آسف، أجد صعوبة في فهمك. سأحيلك الآن إلى وكيل بشري يمكنه مساعدتك بشكل أفضل.",
-                    darija: "Smahliya, ma9dertch nfhemk mzyan. Ghadi ndowzek nwhd l'agent li y9dar y3awnek."
-                };
-                const loopBreakReply = loopBreakMessages[lang] || loopBreakMessages['fr'];
+                const loopBreakReply = getLocaleString(strings.antiLoop.escalation, lang);
 
                 await sock.sendMessage(senderJid, { text: loopBreakReply });
 
@@ -503,7 +498,7 @@ export async function connectToWhatsApp(io, sessionKey) {
             // Attempt to send a graceful fallback to the user so the chat doesn't go silent
             try {
                 await sock.sendMessage(senderJid, {
-                    text: "Je suis désolé, une erreur s'est produite. Veuillez réessayer dans un instant."
+                    text: getLocaleString(strings.common.fatalErrorFallback, session.clientLanguage)
                 });
             } catch (sendError) {
                 console.error("❌ Could not send fallback message to user:", sendError.message);

@@ -1,6 +1,7 @@
 // src/handlers/bookingHandler.js
 import { callAI } from '../services/ai/llmClient.js';
 import { insertEvent } from '../services/calendarService.js'; 
+import { strings, getLocaleString } from '../locales/strings.js';
 
 // 🚀 DATABASE MOCK FUNCTION (Future-Proofed)
 async function fetchCompanyCatalogFromDB() {
@@ -119,7 +120,7 @@ export async function handleBooking(message, language, bookingState = {}, histor
   } catch (error) {
     console.error("Booking Extraction Error:", error);
     return {
-      reply: "Désolé, j'ai eu un problème pour traiter votre réservation. Pouvez-vous répéter ?",
+      reply: getLocaleString(strings.booking.extractionError, language),
       needsHandover: false,
       newContext: { bookingState: currentBookingState }
     };
@@ -130,57 +131,6 @@ export async function handleBooking(message, language, bookingState = {}, histor
   let isComplete = false;
   let adminAlertMsg = null; // 🚀 FIXED: Declared at the correct scope level!
   const lang = language || 'fr'; 
-
-  const replies = {
-    askService: {
-      fr: "Quel type de service souhaitez-vous réserver ?",
-      en: "What type of service would you like to book?",
-      ar: "ما نوع الخدمة التي ترغب في حجزها؟",
-      darija: "Chno no3 dyal service li bghiti tréserver?"
-    },
-    askSpecialist: {
-      fr: `Souhaitez-vous planifier ce rendez-vous pour ${currentBookingState.service_requested} avec un spécialiste en particulier ?`,
-      en: `Would you like to schedule your ${currentBookingState.service_requested} with a specific specialist?`,
-      ar: `هل ترغب في تحديد موعد لـ ${currentBookingState.service_requested} مع متخصص معين؟`,
-      darija: `Bghiti tbooker had ${currentBookingState.service_requested} m3a chi spécialiste wla n3tik awel wahed dispo?`
-    },
-    askDate: {
-      fr: `Parfait. À quelle date aimeriez-vous planifier votre ${currentBookingState.service_requested} ?`,
-      en: `Perfect. What date would you like to schedule your ${currentBookingState.service_requested}?`,
-      ar: `ممتاز. في أي تاريخ ترغب في تحديد موعدك؟`,
-      darija: `Mezyan. Inna nhar bghiti tdir had l-rendezvous?`
-    },
-    askTime: {
-      fr: "À quelle heure précise souhaitez-vous fixer le rendez-vous ?",
-      en: "At what exact time would you like to schedule the appointment?",
-      ar: "في اي ساعة تحديداً ترغب في تحديد الموعد؟",
-      darija: "F w9t bghiti tdir l-rendezvous? (3tini ssa3a bdabt)"
-    },
-    askName: {
-      fr: "Presque terminé ! Quel est votre nom complet pour la réservation ?",
-      en: "Almost done! What is your full name for the booking?",
-      ar: "شارفنا على الانتهاء! ما هو اسمك الكامل للحجز؟",
-      darija: "B9a lina shwiya! Chno smaytek lkamla 3la 9bel la réservation?"
-    },
-    askContact: {
-      fr: "Quel est votre numéro de téléphone valide ou votre adresse e-mail pour vous envoyer la confirmation ?",
-      en: "What is a valid phone number or email address so we can send the confirmation?",
-      ar: "ما هو رقم هاتفك الصحيح أو بريدك الإلكتروني لإرسال التأكيد؟",
-      darija: "3tini nemra d tlfoun s7i7a wla email bach nsifto lik confirmation."
-    },
-    askConfirmation: { 
-      fr: `Voici un récapitulatif :\n- Service : ${currentBookingState.service_requested}\n- Spécialiste : ${currentBookingState.specialist_name}\n- Date & Heure : ${currentBookingState.appointment_date} à ${currentBookingState.appointment_time}\n- Nom : ${currentBookingState.customer_name}\n- Contact : ${currentBookingState.contact_info}\n\nEst-ce que tout est correct ?`,
-      en: `Here is a summary:\n- Service: ${currentBookingState.service_requested}\n- Specialist: ${currentBookingState.specialist_name}\n- Date & Time: ${currentBookingState.appointment_date} at ${currentBookingState.appointment_time}\n- Name: ${currentBookingState.customer_name}\n- Contact: ${currentBookingState.contact_info}\n\nIs everything correct to confirm?`,
-      ar: `إليك ملخص لطلبك:\n- الخدمة: ${currentBookingState.service_requested}\n- المتخصص: ${currentBookingState.specialist_name}\n- التاريخ والوقت: ${currentBookingState.appointment_date} الساعة ${currentBookingState.appointment_time}\n- الاسم: ${currentBookingState.customer_name}\n- معلومات الاتصال: ${currentBookingState.contact_info}\n\nهل كل شيء صحيح لتأكيد الحجز؟`,
-      darija: `Hada lkholasa dyal talab dyalek:\n- Service: ${currentBookingState.service_requested}\n- Spécialiste: ${currentBookingState.specialist_name}\n- Nhar w w9t: ${currentBookingState.appointment_date} m3a ${currentBookingState.appointment_time}\n- Smya: ${currentBookingState.customer_name}\n- Contact: ${currentBookingState.contact_info}\n\nWash kolchi mzyan bash nkonfirmiw?`
-    },
-    finalConfirm: { 
-      fr: `Parfait ! Votre rendez-vous est maintenant officiellement confirmé. Vous recevrez une notification sur ${currentBookingState.contact_info} sous peu.`,
-      en: `Perfect! Your appointment is now officially confirmed. You will receive a notification at ${currentBookingState.contact_info} shortly.`,
-      ar: `ممتاز! تم تأكيد موعدك رسمياً الآن. ستتلقى إشعاراً على ${currentBookingState.contact_info} قريباً.`,
-      darija: `Nadi! Lmawid dyalek tkonfirma. Gha twsellek notification f ${currentBookingState.contact_info} mn hna chwiya.`
-    }
-  };
 
   // Always clean up the ephemeral reply field before any branch returns.
   // Without this, _temp_reply leaks into the persisted bookingState in the gateway
@@ -208,7 +158,7 @@ export async function handleBooking(message, language, bookingState = {}, histor
   if (currentBookingState.user_confirmed) {
     currentBookingState.status = "confirmed";
     isComplete = true;
-    botReply = replies.finalConfirm[lang] || replies.finalConfirm['fr'];
+    botReply = getLocaleString(strings.booking.finalConfirm, lang, currentBookingState.contact_info);
     
     // 🚀 THE CALENDAR EVENT TRIGGER
     try {
@@ -218,13 +168,7 @@ export async function handleBooking(message, language, bookingState = {}, histor
       currentBookingState.calendar_synced = true; 
 
       if (calendarLink) {
-        const calendarAppend = {
-          fr: `\n\n📅 Ajoutez-le à votre calendrier : ${calendarLink}`,
-          en: `\n\n📅 Add it to your calendar: ${calendarLink}`,
-          ar: `\n\n📅 أضفه إلى تقويمك : ${calendarLink}`,
-          darija: `\n\n📅 Zidha f l-calendrier dyalek : ${calendarLink}`
-        };
-        botReply += calendarAppend[lang] || calendarAppend['fr'];
+        botReply += getLocaleString(strings.booking.calendarAppend, lang, calendarLink);
       }
     } catch (error) {
       console.error("Failed to generate Google Calendar link:", error);
@@ -241,13 +185,13 @@ export async function handleBooking(message, language, bookingState = {}, histor
     botReply = tempReply;
   }
   // 3. Lowest Priority: The standard hardcoded fallback questions
-  else if (!currentBookingState.service_requested) botReply = replies.askService[lang] || replies.askService['fr'];
-  else if (!currentBookingState.specialist_name) botReply = replies.askSpecialist[lang] || replies.askSpecialist['fr'];
-  else if (!currentBookingState.appointment_date) botReply = replies.askDate[lang] || replies.askDate['fr'];
-  else if (!currentBookingState.appointment_time) botReply = replies.askTime[lang] || replies.askTime['fr'];
-  else if (!currentBookingState.customer_name) botReply = replies.askName[lang] || replies.askName['fr'];
-  else if (!currentBookingState.contact_info) botReply = replies.askContact[lang] || replies.askContact['fr'];
-  else if (!currentBookingState.user_confirmed) botReply = replies.askConfirmation[lang] || replies.askConfirmation['fr'];
+  else if (!currentBookingState.service_requested) botReply = getLocaleString(strings.booking.askService, lang);
+  else if (!currentBookingState.specialist_name) botReply = getLocaleString(strings.booking.askSpecialist, lang, currentBookingState.service_requested);
+  else if (!currentBookingState.appointment_date) botReply = getLocaleString(strings.booking.askDate, lang, currentBookingState.service_requested);
+  else if (!currentBookingState.appointment_time) botReply = getLocaleString(strings.booking.askTime, lang);
+  else if (!currentBookingState.customer_name) botReply = getLocaleString(strings.booking.askName, lang);
+  else if (!currentBookingState.contact_info) botReply = getLocaleString(strings.booking.askContact, lang);
+  else if (!currentBookingState.user_confirmed) botReply = getLocaleString(strings.booking.askConfirmation, lang, currentBookingState);
 
   return {
     reply: botReply,

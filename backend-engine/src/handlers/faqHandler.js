@@ -1,6 +1,7 @@
 // src/handlers/faqHandler.js
 import { callAI } from '../services/ai/llmClient.js';
 import { getKnowledgeBase } from '../services/configService.js';
+import { strings, getLocaleString } from '../locales/strings.js';
 
 export async function handleFaq(message, language, context) {
   // Fetch the dynamic knowledge base at call time.
@@ -29,15 +30,8 @@ export async function handleFaq(message, language, context) {
 
     // Handle the Fallback (Handover trigger)
     if (aiReply.trim() === 'NO_ANSWER_FOUND') {
-      const fallbacks = {
-        fr: "Je suis désolé, je n'ai pas cette information. Souhaitez-vous que je vous transfère à un de nos agents ?",
-        en: "I'm sorry, I don't have that information. Would you like me to transfer you to an agent?",
-        ar: "عذراً، ليس لدي هذه المعلومة. هل ترغب في التحدث إلى أحد موظفينا؟",
-        darija: "Smahli, ma3ndich had lma3louma. Wesh bghiti nhawlek l chi agent yjawbek?"
-      };
-
       return {
-        reply: fallbacks[language] || fallbacks['fr'],
+        reply: getLocaleString(strings.faq.noAnswerFallback, language),
         needsHandover: true
       };
     }
@@ -50,7 +44,7 @@ export async function handleFaq(message, language, context) {
   } catch (error) {
     console.error("FAQ Handler Error:", error);
     return {
-      reply: "Une erreur est survenue lors de la recherche d'information. Veuillez réessayer.",
+      reply: getLocaleString(strings.faq.searchError, language),
       needsHandover: false
     };
   }
