@@ -383,7 +383,7 @@ export async function connectToWhatsApp(io, sessionKey) {
                     fr: "Je suis désolé, j'ai du mal à vous comprendre. Je vous transfère maintenant à un agent humain qui pourra mieux vous aider.",
                     en: "I'm sorry, I'm having trouble understanding you. I am now transferring you to a human agent who can assist you better.",
                     ar: "أنا آسف، أجد صعوبة في فهمك. سأحيلك الآن إلى وكيل بشري يمكنه مساعدتك بشكل أفضل.",
-                    darija: "Smahliya, ma9dertch nfhemk mzyan. Ghadi ndir lik transfert m3a wa7ed l'agent bach ysawedek bsif."
+                    darija: "Smahliya, ma9dertch nfhemk mzyan. Ghadi ndowzek nwhd l'agent li y9dar y3awnek."
                 };
                 const loopBreakReply = loopBreakMessages[lang] || loopBreakMessages['fr'];
 
