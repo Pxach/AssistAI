@@ -3,6 +3,7 @@
  * @returns { Promise<void> }
  */
 export async function up(knex) {
+
   // ---------------------------------------------------------------------------
   // 1. CREATE TABLES
   // ---------------------------------------------------------------------------
@@ -128,8 +129,41 @@ export async function up(knex) {
       table.text('message_text').notNullable();
       table.string('flag_reason').nullable();
       table.timestamp('created_at').defaultTo(knex.fn.now());
-    });
+    })
+  // 1. Company Configuration Keys
+   .createTable('company_configs', (table) => {
+  table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
+  table.uuid('company_id').references('CompanyID').inTable('Company').onDelete('CASCADE').unique();
 
+  // AI Provider Keys
+  table.text('gemini_api_key').nullable();
+  table.text('grok_api_key').nullable();
+  table.text('openrouter_api_key').nullable();
+  table.text('mistral_api_key').nullable();
+
+  // Google Calendar Credentials
+  table.text('calendar_id').nullable();
+  table.text('google_client_email').nullable();
+  table.text('google_private_key').nullable(); // Multi-line PEM format string
+
+  // Application & Integration URLs
+  table.text('google_review_url').nullable();
+  table.text('tally_form_url').nullable();
+  table.text('dashboard_api_url').nullable();
+
+  table.timestamp('updated_at').defaultTo(knex.fn.now());
+})
+
+// 2. Company Uploaded Documents
+.createTable('company_documents', (table) => {
+  table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
+  table.uuid('company_id').references('CompanyID').inTable('Company').onDelete('CASCADE');
+  table.string('file_name').notNullable();
+  table.string('file_url').notNullable();
+  table.string('file_type').nullable();
+  table.integer('file_size_bytes').nullable();
+  table.timestamp('uploaded_at').defaultTo(knex.fn.now());
+});
   // ---------------------------------------------------------------------------
   // 2. SEED MOCK DATA FOR CHAT ANALYTICS & WHATSAPP SESSIONS TESTING
   // ---------------------------------------------------------------------------
@@ -275,6 +309,8 @@ export async function down(knex) {
     .dropTableIfExists('specialists')
     .dropTableIfExists('services')
     .dropTableIfExists('Customer')
+    .dropTableIfExists('company_documents')   
+    .dropTableIfExists('company_configs')     
     .dropTableIfExists('whatsapp_sessions')
     .dropTableIfExists('AdminUser')
     .dropTableIfExists('Company');

@@ -30,6 +30,8 @@ app.use(
 );
 
 app.use(express.json());
+import settingsRoutes from './routes/settings.js';
+app.use('/api/settings', settingsRoutes);
 
 // 1. Create HTTP server & attach Socket.io with strict CORS configuration
 const httpServer = createServer(app);

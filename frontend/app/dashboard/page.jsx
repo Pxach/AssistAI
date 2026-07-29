@@ -9,6 +9,7 @@ import {
   Download, 
   ChevronDown,
   Headphones,
+  Settings,
   Smartphone  
 } from 'lucide-react';
 
@@ -123,7 +124,7 @@ export default function DashboardPage() {
 
   return (
     <div className="flex h-screen bg-[#F8F9FD] text-slate-800 font-sans">
-      {/* SIDEBAR */}
+{/* SIDEBAR */}
 <aside className="w-64 bg-[#7C5CFC] text-white flex flex-col justify-between p-6 shadow-lg shrink-0">
   <div>
     {/* Navigation Links */}
@@ -188,7 +189,16 @@ export default function DashboardPage() {
         <span>Booking Analytics</span>
       </Link>
 
-      {/* 7. Download Action */}
+      {/* 7. Settings */}
+      <Link 
+        href="/settings-page" 
+        className="flex items-center space-x-3 w-full text-left font-medium hover:opacity-80 transition"
+      >
+        <Settings className="w-5 h-5" />
+        <span>Settings</span>
+      </Link>
+
+      {/* 8. Download Action */}
       <button 
         onClick={handleCsvDownload}
         className="flex items-center space-x-3 w-full text-left font-medium hover:opacity-80 transition pt-2"
