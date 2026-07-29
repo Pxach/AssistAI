@@ -49,12 +49,19 @@ export async function sanitizeInput(input) {
     };
 
   } catch (error) {
-    console.error("🚨 CRITICAL: Security Classifier Error (Fail-Open):", error.message);
-    // Graceful Timeout: If the security check fails due to network issues,
-    // allow the message through rather than paralyzing the entire bot.
+    // STEP 5 FIX (ISSUE-04): Changed from fail-open to fail-closed.
+    // Previously, a classifier timeout silently passed the message as safe.
+    // A deliberately oversized or malformed payload that triggers a timeout
+    // would therefore bypass the firewall entirely.
+    //
+    // Fail-closed: return safe: false so chatController rejects the message.
+    // The distinct reason code (SECURITY_CHECK_UNAVAILABLE vs
+    // PROMPT_INJECTION_DETECTED) lets the gateway send a softer
+    // "please try again" reply rather than a hard security-block message.
+    console.error("🚨 CRITICAL: Security Classifier Unavailable (Fail-Closed):", error.message);
     return {
-      safe: true,
-      reason: 'SECURITY_CHECK_UNVERIFIED_TIMEOUT',
+      safe: false,
+      reason: 'SECURITY_CHECK_UNAVAILABLE',
       cleanText: clean
     };
   }

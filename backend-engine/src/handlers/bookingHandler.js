@@ -34,6 +34,12 @@ export async function handleBooking(message, language, bookingState = {}, histor
     ...bookingState
   };
 
+  // NOTE (ISSUE-01 REVERTED): Auto-seeding contact_info from senderPhone was
+  // removed. WhatsApp now routes some connections through an @lid identifier
+  // (a non-dialable opaque ID), so senderPhone cannot be relied upon as a real
+  // phone number. The askContact waterfall step is intentionally preserved to
+  // force the user to type their actual contact number or email manually.
+
   // 🚀 Dynamic local timezone locking
   const today = new Date().toLocaleString('en-US', { 
     timeZone: 'Africa/Casablanca',

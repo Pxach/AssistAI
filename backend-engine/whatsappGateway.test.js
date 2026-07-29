@@ -31,6 +31,7 @@ const mockSock = {
 jest.unstable_mockModule('@whiskeysockets/baileys', () => ({
   makeWASocket: jest.fn(() => mockSock),
   useMultiFileAuthState: jest.fn(() => ({ state: {}, saveCreds: jest.fn() })),
+  fetchLatestBaileysVersion: jest.fn().mockResolvedValue({ version: [2, 3000, 1015901307], isLatest: true }),
   DisconnectReason: { loggedOut: 0 },
 }));
 
@@ -168,6 +169,18 @@ describe('whatsappGateway.js — Socket.io emissions', () => {
       text: expect.stringContaining('phone=212766014551')
     }));
   });
+
+  it('accepts incoming messages from whitelisted LID format JID', async () => {
+    const mockIo = makeMockIo();
+    await connectToWhatsApp(mockIo, 'test-session');
+    const msgCb = mockEv.on.mock.calls.find(c => c[0] === 'messages.upsert')[1];
+    const lidJid = '11991582249020@lid';
+    armFeedbackFlag(lidJid, 'fr');
+    await msgCb({ type: 'notify', messages: [{ key: { remoteJid: lidJid, fromMe: false }, message: { conversation: '1' } }] });
+    expect(mockIo.emit).toHaveBeenLastCalledWith('whatsapp:feedback_initiated', {
+      phoneNumber: '11991582249020', sentiment: 'good', linkType: 'google_review'
+    });
+  });
 });
 
 describe('whatsappGateway.js — HTTP PATCH session sync', () => {
@@ -213,6 +226,23 @@ describe('whatsappGateway.js — HTTP PATCH session sync', () => {
       phoneNumber: null,
       qrCode: null,
     }));
+  });
+
+  it('prevents reconnection on status code 401, 403, and 405', async () => {
+    const { Boom } = await import('@hapi/boom');
+    const mockIo = makeMockIo();
+
+    for (const code of [401, 403, 405]) {
+      await connectToWhatsApp(mockIo, 'test-session');
+      const connCb = mockEv.on.mock.calls.find(c => c[0] === 'connection.update')[1];
+      
+      const boomError = new Boom('Disconnected', { statusCode: code });
+      await connCb({ connection: 'close', lastDisconnect: { error: boomError } });
+
+      expect(mockPatchSessionStatus).toHaveBeenCalledWith(expect.objectContaining({
+        status: 'DISCONNECTED'
+      }));
+    }
   });
 });
 

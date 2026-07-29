@@ -1,6 +1,6 @@
 // src/services/whatsappGateway.js
 
-import { makeWASocket, useMultiFileAuthState, DisconnectReason } from '@whiskeysockets/baileys';
+import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import qrcodeTerminal from 'qrcode-terminal';
@@ -85,10 +85,34 @@ setInterval(() => {
     }
 }, 30 * 60 * 1000);
 
+/**
+ * STEP 6 NOTE (ISSUE-06): connectionFailureCount is intentionally module-level,
+ * not scoped inside connectToWhatsApp().
+ *
+ * Rationale: connectToWhatsApp() is called recursively on each reconnect attempt,
+ * which creates a new socket and a new closure. If the counter lived inside the
+ * function, it would reset to 0 on every reconnect call, making the circuit breaker
+ * permanently ineffective — the bot would retry indefinitely.
+ *
+ * By living at module scope, the counter correctly accumulates across all reconnect
+ * attempts within the same process lifetime and is only reset on a successful
+ * 'open' event (line ~172).
+ *
+ * ⚠️  Multi-session caveat: if connectToWhatsApp() is ever called concurrently for
+ * multiple independent bot sessions (e.g. a multi-tenant deployment), this counter
+ * must be moved into a per-session context object to avoid cross-session interference.
+ */
+const MAX_RECONNECT_ATTEMPTS = 5;
+let connectionFailureCount = 0;
+
 export async function connectToWhatsApp(io, sessionKey) {
+    const { version } = await fetchLatestBaileysVersion();
+    console.log(`Connecting to WhatsApp Web v${version.join('.')}`);
+
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
 
     const sock = makeWASocket({
+        version,
         auth: state,
         printQRInTerminal: false,
         logger: pino({ level: 'silent' })
@@ -122,10 +146,28 @@ export async function connectToWhatsApp(io, sessionKey) {
             }
 
             if (connection === 'close') {
-                // FIXED [CRIT-2]: Optional chaining was incorrectly applied to the boolean result
-                // of `instanceof`. It must wrap the error object itself before checking statusCode.
-                const shouldReconnect = (lastDisconnect?.error instanceof Boom) &&
-                    lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
+                const error = lastDisconnect?.error;
+                const statusCode = error?.output?.statusCode || error?.output?.payload?.statusCode;
+                const errorMessage = error?.message || error?.output?.payload?.message || (typeof error === 'string' ? error : 'Unknown error');
+
+                console.log(`❌ Connection closed. Reason: ${errorMessage} (Status Code: ${statusCode ?? 'N/A'})`);
+
+                // Do not reconnect on 401 (logged out), 403 (forbidden), or 405 (corrupted/not allowed)
+                const nonReconnectableCodes = [401, 403, 405, DisconnectReason.loggedOut].filter(Boolean);
+                const isNonReconnectable = statusCode !== undefined && nonReconnectableCodes.includes(statusCode);
+
+                let shouldReconnect = (error instanceof Boom) && !isNonReconnectable;
+
+                // ── Circuit Breaker / Failsafe Check ────────────────────────────────
+                if (shouldReconnect) {
+                    if (connectionFailureCount >= MAX_RECONNECT_ATTEMPTS) {
+                        console.error(`🚨 Fatal: Circuit breaker triggered. Maximum connection retry attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Stopping reconnect loop.`);
+                        shouldReconnect = false;
+                    } else {
+                        connectionFailureCount++;
+                        console.log(`🔄 Connection retry attempt ${connectionFailureCount}/${MAX_RECONNECT_ATTEMPTS}...`);
+                    }
+                }
 
                 console.log('❌ Connection closed. Reconnecting:', shouldReconnect);
 
@@ -144,6 +186,7 @@ export async function connectToWhatsApp(io, sessionKey) {
                     connectToWhatsApp(io, sessionKey);
                 }
             } else if (connection === 'open') {
+                connectionFailureCount = 0; // Reset circuit breaker on successful connection
                 console.log('✅ WhatsApp Bot Connected & Ready!');
                 if (io && sessionKey) {
                     const rawId = sock.user?.id || '';
@@ -221,11 +264,17 @@ export async function connectToWhatsApp(io, sessionKey) {
         if (msg.key.fromMe) {
             session.history.push({ role: 'model', parts: [{ text: textMessage }] });
             
-            // Log outgoing message to ChatLogs database table
+            // Log outgoing message to ChatLogs database table.
+            // STEP 7 FIX (ISSUE-07): During an active handover, outgoing messages
+            // from the bot's own number are typed by the human manager, not generated
+            // by the AI. Logging them as 'model' corrupts the audit trail and makes
+            // it impossible for the dashboard to distinguish automated from human replies.
+            // Use 'human_agent' as sender_type when session.handover is true.
+            const outgoingSenderType = session.handover ? 'human_agent' : 'model';
             await logToChatLogsTable({
                 clientJid: senderJid,
                 message: textMessage,
-                sender: 'model',
+                sender: outgoingSenderType,
                 status: session.handover ? 'escalated_to_human' : 'automated',
                 timestamp: new Date().toISOString()
             });
@@ -254,10 +303,13 @@ export async function connectToWhatsApp(io, sessionKey) {
         }
 
         // 🚨 WHITELIST CHECK
-        const allowedTestNumber = '212766014551@s.whatsapp.net';
+        const allowedTestNumbers = [
+            '212766014551@s.whatsapp.net',
+            '11991582249020@lid'
+        ];
 
-        if (senderJid !== allowedTestNumber) {
-            console.log(`⚠️ Ignored: JID "${senderJid}" does not match whitelist "${allowedTestNumber}"`);
+        if (!allowedTestNumbers.includes(senderJid)) {
+            console.log(`⚠️ Ignored: JID "${senderJid}" does not match whitelist [${allowedTestNumbers.join(', ')}]`);
             return;
         }
 
@@ -359,9 +411,20 @@ export async function connectToWhatsApp(io, sessionKey) {
             //   (b) the bot is about to send the exact same message it just sent
             //       (waterfall question repeated because extraction made no progress)
             // After FAIL_THRESHOLD consecutive failures, escalate to a human agent.
+            //
+            // STEP 9 FIX (ISSUE-09): The repeated-reply check is EXEMPTED for the
+            // 'booking' intent. The booking confirmation waterfall legitimately repeats
+            // the same askConfirmation prompt when the user says "yes" ambiguously and
+            // the LLM does not yet commit user_confirmed=true. Counting this as a loop
+            // failure would escalate a user who is actively trying to confirm.
+            // The booking state machine has its own internal progress mechanism
+            // (field population) and does not need the anti-loop as a backstop.
             // ─────────────────────────────────────────────────────────────────
-            const isUnknownIntent = aiResult.metadata.intent === 'unknown';
-            const isRepeatedReply = aiResult.data.reply === session.lastBotReply;
+            const currentIntent = aiResult.metadata.intent;
+            const isUnknownIntent = currentIntent === 'unknown';
+            const isInBookingFlow = currentIntent === 'booking';
+            // Only flag repeated replies outside the booking flow.
+            const isRepeatedReply = !isInBookingFlow && (aiResult.data.reply === session.lastBotReply);
 
             if (isUnknownIntent || isRepeatedReply) {
                 session.consecutiveFails += 1;

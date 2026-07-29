@@ -83,35 +83,32 @@ export async function processUserMessage(rawInput, language = 'fr', history = []
 
   const cleanText = securityResult.cleanText;
 
-  // 4. Intent Routing (Keyword Interceptor or LLM Classification)
-  const handoverKeywords = [
-    // English
-    /\b(human|agent|manager|support|live help|representative)\b/i,
-    // French
-    /\b(humain|agent|conseiller|responsable|directeur|personne)\b/i,
-    // Darija & Arabic transliterations
-    /\b(bnadem|insan|3amil|director|manager)\b/i,
-    /nhdr m3a/i,
-    /dwi m3a/i,
-    /tkelm m3a/i,
-    // Arabic script
-    /إنسان/i,
-    /بشري/i,
-    /عميل/i,
-    /مدير/i,
-    /مساعدة/i
-  ];
-
-  const matchesHandoverKeyword = handoverKeywords.some(regex => regex.test(cleanText));
+  // 4. Intent Routing
+  //
+  // STEP 1 FIX (ISSUE-02): The hardcoded handoverKeywords regex block has been
+  // removed. It was brittle in Darija/Arabic due to substring collisions (e.g.
+  // "kndwi m3ak" triggering /dwi m3a/i). The LLM intent router already has
+  // full conversation history, booking state, and explicit HANDOVER AGREEMENT /
+  // ORPHAN AGREEMENT rules — it is the correct place to make this decision.
+  //
+  // STEP 3 FIX (ISSUE-08): If a booking is already in progress
+  // (bookingState.status === 'pending'), the intent is unambiguous — the user
+  // is answering a booking question. We skip the LLM router entirely to save
+  // one full API round-trip per booking turn.
 
   let aiIntent;
   let aiDetectedLang = language;
   let aiHandoverReason = "";
 
-  if (matchesHandoverKeyword) {
-    console.log(`🔍 Handover keyword matched for user input: "${cleanText}"`);
-    aiIntent = 'handover';
-    aiHandoverReason = "Triggered by user escalation keyword.";
+  const isActiveBooking = bookingState && bookingState.status === 'pending';
+
+  if (isActiveBooking) {
+    // State machine is committed — no need to ask the LLM what the intent is.
+    // Maintain the current language lock; let the booking handler do its work.
+    console.log(`📋 Active booking detected. Skipping intent router — routing directly to booking handler.`);
+    aiIntent = 'booking';
+    aiDetectedLang = language; // preserve sticky language lock
+    aiHandoverReason = "";
   } else {
     const routerResponse = await routeIntent(cleanText, language, bookingState, history);
     aiIntent = typeof routerResponse === 'string' ? routerResponse : routerResponse.intent;

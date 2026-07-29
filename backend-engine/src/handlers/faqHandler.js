@@ -28,11 +28,19 @@ export async function handleFaq(message, language, context) {
   try {
     const aiReply = await callAI(prompt);
 
-    // Handle the Fallback (Handover trigger)
+    // STEP 4 FIX (ISSUE-03): needsHandover was previously true here, silently
+    // locking the session after any unanswered FAQ — even legitimate questions
+    // outside the knowledge base. This is a one-way trap.
+    //
+    // Fix: return needsHandover: false. The noAnswerFallback string already
+    // asks the user "Would you like me to transfer you to an agent?".
+    // If they say yes, the intent router classifies their next message as
+    // 'handover' and escalates with explicit consent. If they don't, the
+    // conversation continues normally.
     if (aiReply.trim() === 'NO_ANSWER_FOUND') {
       return {
         reply: getLocaleString(strings.faq.noAnswerFallback, language),
-        needsHandover: true
+        needsHandover: false
       };
     }
 
