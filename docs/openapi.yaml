@@ -1,0 +1,598 @@
+openapi: 3.0.3
+
+info:
+  title: AssistAI API
+  version: 1.0.0
+  description: |
+    Backend API for AssistAI chatbot dashboard, booking,
+    analytics, reviews, and human intervention management.
+
+servers:
+  - url: /api/v1
+
+tags:
+  - name: Authentication
+  - name: Customers
+  - name: Appointments
+  - name: Reviews
+  - name: Analytics
+  - name: Escalations
+  - name: Reservations
+
+paths:
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Authenticate dashboard administrator
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+
+      responses:
+        "200":
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/me:
+    get:
+      tags:
+        - Authentication
+      summary: Get current authenticated user
+
+      security:
+        - BearerAuth: []
+
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /customers:
+    get:
+      tags:
+        - Customers
+      summary: Retrieve all customers
+
+      security:
+        - BearerAuth: []
+
+      responses:
+        "200":
+          description: Customer list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Customer'
+
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /appointments:
+
+    get:
+      tags:
+        - Appointments
+      summary: Retrieve all appointments
+
+      security:
+        - BearerAuth: []
+
+      responses:
+        "200":
+          description: Appointment list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Appointment'
+
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      tags:
+        - Appointments
+      summary: Create confirmed appointment
+
+      security:
+        - BearerAuth: []
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAppointmentRequest'
+
+      responses:
+        "201":
+          description: Appointment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateAppointmentResponse'
+
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /reviews:
+    get:
+      tags:
+        - Reviews
+      summary: Retrieve all reviews
+
+      security:
+        - BearerAuth: []
+
+      responses:
+        "200":
+          description: Review list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Review'
+
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /analytics/overview:
+    get:
+      tags:
+        - Analytics
+      summary: Dashboard overview analytics
+
+      security:
+        - BearerAuth: []
+
+      responses:
+        "200":
+          description: Overview analytics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OverviewAnalytics'
+
+  /analytics/conversations:
+    get:
+      tags:
+        - Analytics
+      summary: Conversation analytics
+
+      security:
+        - BearerAuth: []
+
+      responses:
+        "200":
+          description: Conversation analytics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationAnalytics'
+
+  /analytics/reviews:
+    get:
+      tags:
+        - Analytics
+      summary: Review analytics
+
+      security:
+        - BearerAuth: []
+
+      responses:
+        "200":
+          description: Review analytics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewAnalytics'
+
+  /analytics/bookings:
+    get:
+      tags:
+        - Analytics
+      summary: Booking analytics
+
+      security:
+        - BearerAuth: []
+
+      responses:
+        "200":
+          description: Booking analytics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingAnalytics'
+
+  /escalations:
+    post:
+      tags:
+        - Escalations
+      summary: Create human intervention request
+
+      security:
+        - BearerAuth: []
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEscalationRequest'
+
+      responses:
+        "201":
+          description: Escalation created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateEscalationResponse'
+
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /reservations:
+    post:
+      tags:
+        - Reservations
+      summary: Create temporary reservation
+
+      security:
+        - BearerAuth: []
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReservationRequest'
+
+      responses:
+        "201":
+          description: Reservation created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateReservationResponse'
+
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+
+    ErrorResponse:
+      type: object
+      properties:
+        detail:
+          type: string
+          example: Unauthorized access
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: admin@company.com
+        password:
+          type: string
+          example: password123
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIs...
+
+        user:
+          $ref: '#/components/schemas/User'
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+
+        email:
+          type: string
+          example: admin@company.com
+
+        role:
+          type: string
+          example: admin
+
+    Customer:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+
+        name:
+          type: string
+          example: Ahmed
+
+        phone:
+          type: string
+          example: "+212600000000"
+
+        language:
+          type: string
+          example: Darija
+
+    CreateAppointmentRequest:
+      type: object
+      required:
+        - customer_id
+        - date
+        - time
+      properties:
+        customer_id:
+          type: integer
+          example: 1
+
+        date:
+          type: string
+          format: date
+          example: "2026-08-01"
+
+        time:
+          type: string
+          example: "14:00"
+
+    CreateAppointmentResponse:
+      type: object
+      properties:
+        appointment_id:
+          type: integer
+          example: 15
+
+        status:
+          type: string
+          example: confirmed
+
+    Appointment:
+      type: object
+      properties:
+        appointment_id:
+          type: integer
+          example: 15
+
+        customer_name:
+          type: string
+          example: Ahmed
+
+        date:
+          type: string
+          format: date
+
+        time:
+          type: string
+          example: "14:00"
+
+        status:
+          type: string
+          example: confirmed
+
+    Review:
+      type: object
+      properties:
+        review_id:
+          type: integer
+          example: 1
+
+        customer_id:
+          type: integer
+          example: 2
+
+        sentiment:
+          type: string
+          enum:
+            - positive
+            - negative
+
+        message:
+          type: string
+          example: Great chatbot
+
+    OverviewAnalytics:
+      type: object
+      properties:
+        total_conversations:
+          type: integer
+          example: 1200
+
+        total_reviews:
+          type: integer
+          example: 500
+
+        total_bookings:
+          type: integer
+          example: 230
+
+        pending_escalations:
+          type: integer
+          example: 4
+
+    ConversationAnalytics:
+      type: object
+      properties:
+        daily:
+          type: integer
+          example: 50
+
+        weekly:
+          type: integer
+          example: 300
+
+        monthly:
+          type: integer
+          example: 1200
+
+    ReviewAnalytics:
+      type: object
+      properties:
+        positive:
+          type: integer
+          example: 420
+
+        negative:
+          type: integer
+          example: 80
+
+        positive_percentage:
+          type: number
+          example: 84
+
+        negative_percentage:
+          type: number
+          example: 16
+
+    BookingAnalytics:
+      type: object
+      properties:
+        today:
+          type: integer
+          example: 12
+
+        this_week:
+          type: integer
+          example: 55
+
+        peak_day:
+          type: string
+          example: Friday
+
+        peak_hour:
+          type: string
+          example: "14:00"
+
+    CreateEscalationRequest:
+      type: object
+      required:
+        - customer_id
+        - reason
+      properties:
+        customer_id:
+          type: integer
+          example: 5
+
+        reason:
+          type: string
+          example: Customer requested human support
+
+    CreateEscalationResponse:
+      type: object
+      properties:
+        escalation_id:
+          type: integer
+          example: 12
+
+        status:
+          type: string
+          example: pending
+
+    CreateReservationRequest:
+      type: object
+      required:
+        - customer_id
+        - date
+        - time
+      properties:
+        customer_id:
+          type: integer
+          example: 1
+
+        date:
+          type: string
+          format: date
+          example: "2026-08-01"
+
+        time:
+          type: string
+          example: "14:00"
+
+    CreateReservationResponse:
+      type: object
+      properties:
+        reservation_id:
+          type: integer
+          example: 44
+
+        expires_in_minutes:
+          type: integer
+          example: 10
