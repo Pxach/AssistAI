@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import Link from 'next/link';
 import { io } from 'socket.io-client';
+import { ArrowLeft } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -95,7 +97,7 @@ export default function LiveInterventionHub() {
   // 2. Persistent Single Socket Connection
   useEffect(() => {
     const socket = io(API_BASE, {
-      transports: ['websocket', 'polling']
+      transports: ['websocket', 'polling'],
     });
     socketRef.current = socket;
 
@@ -129,8 +131,8 @@ export default function LiveInterventionHub() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           phoneNumber: selectedSession.PhoneNumber,
-          handover: handoverState
-        })
+          handover: handoverState,
+        }),
       });
 
       const data = await res.json();
@@ -166,8 +168,8 @@ export default function LiveInterventionHub() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           phoneNumber: selectedSession.PhoneNumber,
-          message: textToSend
-        })
+          message: textToSend,
+        }),
       });
 
       const data = await res.json();
@@ -192,157 +194,175 @@ export default function LiveInterventionHub() {
   };
 
   return (
-    <div className="flex h-[750px] w-full max-w-6xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200">
-      
-      {/* SIDEBAR: Active Sessions / Chats */}
-      <div className="w-1/3 border-r border-gray-200 bg-gray-50 flex flex-col">
-        <div className="p-4 border-b border-gray-200 bg-white flex justify-between items-center">
-          <h2 className="font-bold text-gray-800">Live Chats</h2>
-          <span className="text-xs font-semibold px-2.5 py-1 bg-emerald-100 text-emerald-700 rounded-full">
-            {sessions.length} Active
-          </span>
+    /* Outer Full-Width Container with #f8f9fd Background and Vertical Centering */
+    <div className="min-h-screen bg-[#f8f9fd] flex flex-col justify-center items-center py-10 px-4 sm:px-6 lg:px-8">
+      <div className="w-full max-w-6xl space-y-4">
+        
+        {/* Top-Left Navigation Button */}
+        <div className="flex items-center justify-start">
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 border border-gray-200/80 rounded-xl shadow-xs transition-all hover:shadow-sm"
+          >
+            <ArrowLeft className="w-4 h-4 text-gray-500" />
+            Dashboard
+          </Link>
         </div>
 
-        <div className="overflow-y-auto flex-1">
-          {sessions.map((session) => {
-            const isSelected = selectedSession?.PhoneNumber === session.PhoneNumber;
-            return (
-              <div
-                key={session.PhoneNumber}
-                onClick={() => handleSelectSession(session)}
-                className={`p-4 border-b border-gray-100 cursor-pointer transition-colors ${
-                  isSelected ? 'bg-emerald-50 border-l-4 border-l-emerald-600' : 'hover:bg-gray-100'
-                }`}
-              >
-                <div className="flex justify-between items-start mb-1">
-                  <span className="font-semibold text-gray-900 text-sm">
-                    {session.CustomerName || session.PhoneNumber}
-                  </span>
-                  {session.Handover && (
-                    <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded">
-                      Human Active
-                    </span>
-                  )}
-                </div>
-                <div className="flex justify-between items-center text-xs text-gray-500">
-                  <span>{session.PhoneNumber}</span>
-                  <span
-                    className={`capitalize ${
-                      session.Sentiment === 'Negative' ? 'text-red-500 font-semibold' : ''
+        {/* Main Live Intervention Hub Layout */}
+        <div className="flex h-[750px] w-full bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-200/80">
+          
+          {/* SIDEBAR: Active Sessions / Chats */}
+          <div className="w-1/3 border-r border-gray-200 bg-gray-50 flex flex-col">
+            <div className="p-4 border-b border-gray-200 bg-white flex justify-between items-center">
+              <h2 className="font-bold text-gray-800">Live Chats</h2>
+              <span className="text-xs font-semibold px-2.5 py-1 bg-emerald-100 text-emerald-700 rounded-full">
+                {sessions.length} Active
+              </span>
+            </div>
+
+            <div className="overflow-y-auto flex-1">
+              {sessions.map((session) => {
+                const isSelected = selectedSession?.PhoneNumber === session.PhoneNumber;
+                return (
+                  <div
+                    key={session.PhoneNumber}
+                    onClick={() => handleSelectSession(session)}
+                    className={`p-4 border-b border-gray-100 cursor-pointer transition-colors ${
+                      isSelected ? 'bg-emerald-50 border-l-4 border-l-emerald-600' : 'hover:bg-gray-100'
                     }`}
                   >
-                    {session.Sentiment || 'Neutral'}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* MAIN CHAT AREA */}
-      <div className="w-2/3 flex flex-col bg-white">
-        {selectedSession ? (
-          <>
-            {/* Chat Header */}
-            <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-              <div>
-                <h3 className="font-bold text-gray-800">
-                  {selectedSession.CustomerName || 'Unknown Customer'}
-                </h3>
-                <p className="text-xs text-gray-500">{selectedSession.PhoneNumber}</p>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <span className="text-xs text-gray-400">Mode:</span>
-                <span
-                  className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                    selectedSession.Handover
-                      ? 'bg-amber-100 text-amber-800'
-                      : 'bg-indigo-100 text-indigo-800'
-                  }`}
-                >
-                  {selectedSession.Handover ? '🤖 AI Paused (Human Takeover)' : '🤖 AI Responding'}
-                </span>
-
-                {selectedSession.Handover ? (
-                  <button
-                    onClick={() => handleToggleHandover(false)}
-                    className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold px-2.5 py-1 rounded-md transition-colors"
-                  >
-                    Resume AI Bot
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => handleToggleHandover(true)}
-                    className="text-xs bg-amber-50 hover:bg-amber-100 text-amber-700 font-semibold px-2.5 py-1 rounded-md transition-colors"
-                  >
-                    Pause AI Bot
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Message Thread */}
-            <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-50">
-              {fetchingLogs && messages.length === 0 ? (
-                <div className="flex h-full items-center justify-center text-xs text-gray-400">
-                  Loading conversation history...
-                </div>
-              ) : (
-                messages.map((msg, idx) => {
-                  const isCustomer = msg.sender_type === 'customer';
-                  const isHuman = msg.sender_type === 'human_agent';
-
-                  return (
-                    <div
-                      key={msg.ChatID || `${msg.PhoneNumber}-${idx}`}
-                      className={`flex flex-col ${isCustomer ? 'items-start' : 'items-end'}`}
-                    >
-                      <span className="text-[10px] text-gray-400 mb-1 px-1">
-                        {isCustomer ? 'Customer' : isHuman ? 'Human Support' : 'AI Assistant'}
+                    <div className="flex justify-between items-start mb-1">
+                      <span className="font-semibold text-gray-900 text-sm">
+                        {session.CustomerName || session.PhoneNumber}
                       </span>
-                      <div
-                        className={`max-w-[70%] p-3 rounded-2xl text-sm ${
-                          isCustomer
-                            ? 'bg-white text-gray-800 rounded-tl-none border border-gray-200 shadow-sm'
-                            : isHuman
-                            ? 'bg-emerald-600 text-white rounded-tr-none shadow-sm'
-                            : 'bg-indigo-600 text-white rounded-tr-none shadow-sm'
+                      {session.Handover && (
+                        <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded">
+                          Human Active
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex justify-between items-center text-xs text-gray-500">
+                      <span>{session.PhoneNumber}</span>
+                      <span
+                        className={`capitalize ${
+                          session.Sentiment === 'Negative' ? 'text-red-500 font-semibold' : ''
                         }`}
                       >
-                        {msg.message}
-                      </div>
+                        {session.Sentiment || 'Neutral'}
+                      </span>
                     </div>
-                  );
-                })
-              )}
-              <div ref={messagesEndRef} />
+                  </div>
+                );
+              })}
             </div>
-
-            {/* Reply Input Box */}
-            <form onSubmit={handleSendMessage} className="p-3 border-t border-gray-200 flex gap-2 bg-white">
-              <input
-                type="text"
-                placeholder="Type a response... (Sending automatically pauses AI)"
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                className="flex-1 border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-emerald-600"
-              />
-              <button
-                type="submit"
-                disabled={loading || !inputMessage.trim()}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-5 py-2 rounded-lg text-sm transition-colors disabled:opacity-50"
-              >
-                {loading ? 'Sending...' : 'Send Reply'}
-              </button>
-            </form>
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
-            Select a session from the list to intervene.
           </div>
-        )}
+
+          {/* MAIN CHAT AREA */}
+          <div className="w-2/3 flex flex-col bg-white">
+            {selectedSession ? (
+              <>
+                {/* Chat Header */}
+                <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                  <div>
+                    <h3 className="font-bold text-gray-800">
+                      {selectedSession.CustomerName || 'Unknown Customer'}
+                    </h3>
+                    <p className="text-xs text-gray-500">{selectedSession.PhoneNumber}</p>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs text-gray-400">Mode:</span>
+                    <span
+                      className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                        selectedSession.Handover
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-indigo-100 text-indigo-800'
+                      }`}
+                    >
+                      {selectedSession.Handover ? '🤖 AI Paused (Human Takeover)' : '🤖 AI Responding'}
+                    </span>
+
+                    {selectedSession.Handover ? (
+                      <button
+                        onClick={() => handleToggleHandover(false)}
+                        className="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold px-2.5 py-1 rounded-md transition-colors"
+                      >
+                        Resume AI Bot
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleToggleHandover(true)}
+                        className="text-xs bg-amber-50 hover:bg-amber-100 text-amber-700 font-semibold px-2.5 py-1 rounded-md transition-colors"
+                      >
+                        Pause AI Bot
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Message Thread */}
+                <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-50">
+                  {fetchingLogs && messages.length === 0 ? (
+                    <div className="flex h-full items-center justify-center text-xs text-gray-400">
+                      Loading conversation history...
+                    </div>
+                  ) : (
+                    messages.map((msg, idx) => {
+                      const isCustomer = msg.sender_type === 'customer';
+                      const isHuman = msg.sender_type === 'human_agent';
+
+                      return (
+                        <div
+                          key={msg.ChatID || `${msg.PhoneNumber}-${idx}`}
+                          className={`flex flex-col ${isCustomer ? 'items-start' : 'items-end'}`}
+                        >
+                          <span className="text-[10px] text-gray-400 mb-1 px-1">
+                            {isCustomer ? 'Customer' : isHuman ? 'Human Support' : 'AI Assistant'}
+                          </span>
+                          <div
+                            className={`max-w-[70%] p-3 rounded-2xl text-sm ${
+                              isCustomer
+                                ? 'bg-white text-gray-800 rounded-tl-none border border-gray-200 shadow-xs'
+                                : isHuman
+                                ? 'bg-emerald-600 text-white rounded-tr-none shadow-xs'
+                                : 'bg-indigo-600 text-white rounded-tr-none shadow-xs'
+                            }`}
+                          >
+                            {msg.message}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                  <div ref={messagesEndRef} />
+                </div>
+
+                {/* Reply Input Box */}
+                <form onSubmit={handleSendMessage} className="p-3 border-t border-gray-200 flex gap-2 bg-white">
+                  <input
+                    type="text"
+                    placeholder="Type a response... (Sending automatically pauses AI)"
+                    value={inputMessage}
+                    onChange={(e) => setInputMessage(e.target.value)}
+                    className="flex-1 border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-hidden focus:border-emerald-600"
+                  />
+                  <button
+                    type="submit"
+                    disabled={loading || !inputMessage.trim()}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-5 py-2 rounded-lg text-sm transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    {loading ? 'Sending...' : 'Send Reply'}
+                  </button>
+                </form>
+              </>
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
+                Select a session from the list to intervene.
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

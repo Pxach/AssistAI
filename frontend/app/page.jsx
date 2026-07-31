@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useEffect } from 'react';
 
 export default function AuthPage() {
   const [isSignUp, setIsSignUp] = useState(true);
@@ -12,6 +13,20 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+
+  useEffect(() => {
+    // Clear any stale session on landing here
+    localStorage.removeItem('token');
+    localStorage.removeItem('email');
+    localStorage.removeItem('userEmail');
+    localStorage.removeItem('name');
+    localStorage.removeItem('userName');
+
+    fetch('http://localhost:5000/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+    }).catch(() => {}); // best-effort; don't block the login page on this
+  }, []);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
