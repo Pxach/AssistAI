@@ -54,15 +54,15 @@ const PROVIDER_REGISTRY = [
     parseResponse: (data) => data.candidates[0].content.parts[0].text.trim(),
   },
 
-  // ── 2. MISTRAL AI ──────────────────────────────────────────────────────────
-  // OpenAI-compatible endpoint. Supports response_format for JSON mode.
+  // ── 2. CEREBRAS INFERENCE ──────────────────────────────────────────────────
+  // High-speed Llama inference platform. OpenAI-compatible endpoint.
   {
-    id:           'mistral',
-    keyEnvVar:    'MISTRAL_API_KEY',
-    modelEnvVar:  'MISTRAL_MODEL',
-    defaultModel: 'mistral-small-latest',
+    id:           'cerebras',
+    keyEnvVar:    'CEREBRAS_API_KEY',
+    modelEnvVar:  'CEREBRAS_MODEL',
+    defaultModel: 'llama3.1-70b',
 
-    buildUrl: () => 'https://api.mistral.ai/v1/chat/completions',
+    buildUrl: () => 'https://api.cerebras.ai/v1/chat/completions',
 
     buildHeaders: (apiKey) => ({
       'Content-Type':  'application/json',
@@ -82,66 +82,7 @@ const PROVIDER_REGISTRY = [
     parseResponse: (data) => data.choices[0].message.content.trim(),
   },
 
-  // ── 3. GROK (xAI) ──────────────────────────────────────────────────────────
-  // OpenAI-compatible endpoint. Base URL is env-configurable via GROK_BASE_URL.
-  {
-    id:           'grok',
-    keyEnvVar:    'GROK_API_KEY',
-    modelEnvVar:  'GROK_MODEL',
-    defaultModel: 'grok-3-mini',
-
-    buildUrl: () =>
-      `${process.env.GROK_BASE_URL || 'https://api.x.ai/v1'}/chat/completions`,
-
-    buildHeaders: (apiKey) => ({
-      'Content-Type':  'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    }),
-
-    buildBody: (prompt, model, options) => {
-      const body = {
-        model,
-        messages:    [{ role: 'user', content: prompt }],
-        temperature: 0.0,
-      };
-      if (options.jsonMode) body.response_format = { type: 'json_object' };
-      return JSON.stringify(body);
-    },
-
-    parseResponse: (data) => data.choices[0].message.content.trim(),
-  },
-
-  // ── 4. GROQ INFERENCE PLATFORM (groq.com) ─────────────────────────────────
-  // NOTE: "Groq" (groq.com, GROQ_API_KEY) ≠ "Grok" (xAI, GROK_API_KEY).
-  // Groq is a high-speed inference API for open-source models (Llama, Mixtral).
-  // OpenAI-compatible endpoint.
-  {
-    id:           'groq',
-    keyEnvVar:    'GROQ_API_KEY',
-    modelEnvVar:  'GROQ_MODEL',
-    defaultModel: 'llama-3.3-70b-versatile',
-
-    buildUrl: () => 'https://api.groq.com/openai/v1/chat/completions',
-
-    buildHeaders: (apiKey) => ({
-      'Content-Type':  'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    }),
-
-    buildBody: (prompt, model, options) => {
-      const body = {
-        model,
-        messages:    [{ role: 'user', content: prompt }],
-        temperature: 0.0,
-      };
-      if (options.jsonMode) body.response_format = { type: 'json_object' };
-      return JSON.stringify(body);
-    },
-
-    parseResponse: (data) => data.choices[0].message.content.trim(),
-  },
-
-  // ── 5. OPENROUTER (Fallback Aggregator) ────────────────────────────────────
+  // ── 3. OPENROUTER (Fallback Aggregator) ────────────────────────────────────
   // Routes to hundreds of models. Useful as a last-resort fallback.
   // OpenAI-compatible endpoint with additional Referer/Title headers.
   {
@@ -170,7 +111,6 @@ const PROVIDER_REGISTRY = [
       return JSON.stringify(body);
     },
 
-    parseResponse: (data) => data.choices[0].message.content.trim(),
   },
 ];
 
@@ -269,8 +209,7 @@ export async function callAI(prompt, options = {}) {
   if (activeProviders.length === 0) {
     throw new Error(
       '[LLM Client] ❌ No AI providers are configured. ' +
-      'Set at least one API key (GEMINI_API_KEY, MISTRAL_API_KEY, GROK_API_KEY, ' +
-      'GROQ_API_KEY, or OPENROUTER_API_KEY) in your environment.'
+      'Set at least one API key (GEMINI_API_KEY, CEREBRAS_API_KEY, or OPENROUTER_API_KEY) in your environment.'
     );
   }
 
