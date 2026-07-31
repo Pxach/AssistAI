@@ -3,3 +3,5 @@ auth_info_baileys
 .env
 calendar-key.json
 *.log
+node_modules/
+**/node_modules/
