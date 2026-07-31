@@ -8,8 +8,9 @@ import QRCode from 'qrcode';
 
 import { processUserMessage } from '../controllers/chatController.js';
 import { handleFeedback } from '../handlers/feedbackHandler.js';
-import { patchSessionStatus } from './sessionSyncService.js';
+import { patchSessionStatus, syncChatMessage, syncHandover } from './sessionSyncService.js';
 import { strings, getLocaleString } from '../locales/strings.js';
+import { io as socketClient } from 'socket.io-client';
 
 const ADMIN_JID = '212663095839@s.whatsapp.net'; // TODO: Update with real manager JID
 const INACTIVITY_LIMIT = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
@@ -19,7 +20,34 @@ const FAIL_THRESHOLD = 3;
 
 const userSessions = {};
 
-// 💾 DATABASE MOCK LOGGER FUNCTIONS (Future-Proofed for PostgreSQL migration)
+let dashboardSocket = null;
+
+function initDashboardSocket(sock) {
+    if (dashboardSocket) return;
+    const socketUrl = process.env.DASHBOARD_API_URL || 'http://localhost:5000';
+    dashboardSocket = socketClient(socketUrl, {
+        transports: ['websocket', 'polling'],
+        reconnection: true
+    });
+
+    dashboardSocket.on('connect', () => {
+        console.log('🔌 Connected engine to Dashboard Socket.io server:', dashboardSocket.id);
+    });
+
+    dashboardSocket.on('whatsapp:send_outbound', async ({ toPhoneNumber, messageText }) => {
+        if (sock && toPhoneNumber && messageText) {
+            const jid = toPhoneNumber.includes('@') ? toPhoneNumber : `${toPhoneNumber}@s.whatsapp.net`;
+            try {
+                await sock.sendMessage(jid, { text: messageText });
+                console.log(`📤 Outbound human agent message dispatched to ${jid}`);
+            } catch (err) {
+                console.error(`❌ Error dispatching outbound message to ${jid}:`, err);
+            }
+        }
+    });
+}
+
+// 💾 REAL-TIME DATABASE & SOCKET SYNCHRONIZATION HELPERS
 export async function logToChatLogsTable({ clientJid, message, sender, status, timestamp }) {
     console.log(`💾 [DB INSERT - ChatLogs]`, {
         client_jid: clientJid,
@@ -28,20 +56,29 @@ export async function logToChatLogsTable({ clientJid, message, sender, status, t
         status: status,
         created_at: timestamp || new Date().toISOString()
     });
-    // Real implementation:
-    // await db.query(
-    //     'INSERT INTO "ChatLogs" (client_jid, message_text, sender_type, status, created_at) VALUES ($1, $2, $3, $4, $5)', 
-    //     [clientJid, message, sender, status, timestamp || new Date().toISOString()]
-    // );
+
+    const phoneNumber = clientJid ? clientJid.split('@')[0].split(':')[0] : '';
+    const normalizedSender = sender === 'user' ? 'customer' : (sender === 'model' ? 'bot' : sender);
+
+    await syncChatMessage({
+        phoneNumber,
+        senderType: normalizedSender,
+        message,
+        status: status || 'active'
+    });
 }
 
 export async function updateChatSessionInDb(clientJid, fields) {
     console.log(`💾 [DB UPDATE - ChatSession] User: ${clientJid}`, fields);
-    // Real implementation:
-    // await db.query(
-    //     'UPDATE "ChatSession" SET handover = $1, active = $2, status = $3, metadata = $4 WHERE client_jid = $5', 
-    //     [fields.handover, fields.active, fields.status, JSON.stringify(fields.metadata), clientJid]
-    // );
+
+    const phoneNumber = clientJid ? clientJid.split('@')[0].split(':')[0] : '';
+
+    await syncHandover({
+        phoneNumber,
+        handover: fields.handover,
+        reason: fields.metadata?.reason || null,
+        lastMessage: fields.metadata?.lastMessage || null
+    });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -126,22 +163,21 @@ export async function connectToWhatsApp(io, sessionKey) {
                 console.log("📲 Scan this QR code with your WhatsApp to link the bot:");
                 qrcodeTerminal.generate(qr, { small: true });
 
-                if (io && sessionKey) {
-                    try {
-                        const base64QrImage = await QRCode.toDataURL(qr);
+                try {
+                    const base64QrImage = await QRCode.toDataURL(qr);
+                    if (io && sessionKey) {
                         io.to(sessionKey).emit('whatsapp:qr', { qrCode: base64QrImage });
-
-                        // ── HTTP PATCH: notify dashboard of PAIRING state ──────────
-                        patchSessionStatus({
-                            sessionKey,
-                            status: 'PAIRING',
-                            phoneNumber: null,
-                            qrCode: base64QrImage,
-                            connectedAt: new Date().toISOString(),
-                        });
-                    } catch (err) {
-                        console.error('❌ Failed to generate base64 QR code:', err);
                     }
+                    // ── HTTP PATCH: notify dashboard of PAIRING state ──────────
+                    patchSessionStatus({
+                        sessionKey: sessionKey || 'default',
+                        status: 'PAIRING',
+                        phoneNumber: null,
+                        qrCode: base64QrImage,
+                        connectedAt: new Date().toISOString(),
+                    });
+                } catch (err) {
+                    console.error('❌ Failed to generate base64 QR code:', err);
                 }
             }
 
@@ -188,20 +224,22 @@ export async function connectToWhatsApp(io, sessionKey) {
             } else if (connection === 'open') {
                 connectionFailureCount = 0; // Reset circuit breaker on successful connection
                 console.log('✅ WhatsApp Bot Connected & Ready!');
+                const rawId = sock.user?.id || '';
+                const phoneNumber = rawId ? rawId.split(':')[0].split('@')[0] : '';
                 if (io && sessionKey) {
-                    const rawId = sock.user?.id || '';
-                    const phoneNumber = rawId ? rawId.split(':')[0].split('@')[0] : '';
                     io.to(sessionKey).emit('whatsapp:status_change', { status: 'CONNECTED', phoneNumber: phoneNumber });
-
-                    // ── HTTP PATCH: notify dashboard of CONNECTED state ────────────
-                    patchSessionStatus({
-                        sessionKey,
-                        status: 'CONNECTED',
-                        phoneNumber,
-                        qrCode: null,
-                        connectedAt: new Date().toISOString(),
-                    });
                 }
+
+                // ── HTTP PATCH: notify dashboard of CONNECTED state ────────────
+                patchSessionStatus({
+                    sessionKey: sessionKey || 'default',
+                    status: 'CONNECTED',
+                    phoneNumber,
+                    qrCode: null,
+                    connectedAt: new Date().toISOString(),
+                });
+
+                initDashboardSocket(sock);
             }
         } catch (error) {
             console.error('❌ Fatal error in connection.update handler:', error);
@@ -571,5 +609,6 @@ export async function connectToWhatsApp(io, sessionKey) {
 
     // Return the live socket so callers (e.g. index.js) can pass it
     // to services that need to send proactive messages (reminders, alerts).
+    initDashboardSocket(sock);
     return sock;
 }

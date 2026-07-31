@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
 export default function BookingAnalyticsPage() {
   const [stats, setStats] = useState({
     totalBookingRequests: 0,
@@ -61,7 +63,7 @@ export default function BookingAnalyticsPage() {
     async function loadBookingData() {
       try {
         const response = await fetch(
-          `http://localhost:5000/api/dashboard/booking-stats?timeframe=${encodeURIComponent(timeframe)}`,
+          `${API_BASE}/api/dashboard/booking-stats?timeframe=${encodeURIComponent(timeframe)}`,
           {
             headers: {
               'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -97,7 +99,7 @@ export default function BookingAnalyticsPage() {
 
   const handleCsvDownload = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/dashboard/export-csv', {
+      const response = await fetch(`${API_BASE}/api/dashboard/export-csv`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }

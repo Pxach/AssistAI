@@ -54,13 +54,41 @@ const PROVIDER_REGISTRY = [
     parseResponse: (data) => data.candidates[0].content.parts[0].text.trim(),
   },
 
-  // ── 2. CEREBRAS INFERENCE ──────────────────────────────────────────────────
+  // ── 2. GROQ INFERENCE PLATFORM (groq.com) ─────────────────────────────────
+  // High-speed open-source model inference API. OpenAI-compatible endpoint.
+  {
+    id:           'groq',
+    keyEnvVar:    'GROQ_API_KEY',
+    modelEnvVar:  'GROQ_MODEL',
+    defaultModel: 'llama-3.3-70b-versatile',
+
+    buildUrl: () => 'https://api.groq.com/openai/v1/chat/completions',
+
+    buildHeaders: (apiKey) => ({
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    }),
+
+    buildBody: (prompt, model, options) => {
+      const body = {
+        model,
+        messages:    [{ role: 'user', content: prompt }],
+        temperature: 0.0,
+      };
+      if (options.jsonMode) body.response_format = { type: 'json_object' };
+      return JSON.stringify(body);
+    },
+
+    parseResponse: (data) => data.choices[0].message.content.trim(),
+  },
+
+  // ── 3. CEREBRAS INFERENCE ──────────────────────────────────────────────────
   // High-speed Llama inference platform. OpenAI-compatible endpoint.
   {
     id:           'cerebras',
     keyEnvVar:    'CEREBRAS_API_KEY',
     modelEnvVar:  'CEREBRAS_MODEL',
-    defaultModel: 'llama3.1-70b',
+    defaultModel: 'gpt-oss-120b',
 
     buildUrl: () => 'https://api.cerebras.ai/v1/chat/completions',
 
@@ -82,7 +110,7 @@ const PROVIDER_REGISTRY = [
     parseResponse: (data) => data.choices[0].message.content.trim(),
   },
 
-  // ── 3. OPENROUTER (Fallback Aggregator) ────────────────────────────────────
+  // ── 4. OPENROUTER (Fallback Aggregator) ────────────────────────────────────
   // Routes to hundreds of models. Useful as a last-resort fallback.
   // OpenAI-compatible endpoint with additional Referer/Title headers.
   {
@@ -111,6 +139,7 @@ const PROVIDER_REGISTRY = [
       return JSON.stringify(body);
     },
 
+    parseResponse: (data) => data.choices[0].message.content.trim(),
   },
 ];
 
@@ -209,7 +238,7 @@ export async function callAI(prompt, options = {}) {
   if (activeProviders.length === 0) {
     throw new Error(
       '[LLM Client] ❌ No AI providers are configured. ' +
-      'Set at least one API key (GEMINI_API_KEY, CEREBRAS_API_KEY, or OPENROUTER_API_KEY) in your environment.'
+      'Set at least one API key (GEMINI_API_KEY, GROQ_API_KEY, CEREBRAS_API_KEY, or OPENROUTER_API_KEY) in your environment.'
     );
   }
 

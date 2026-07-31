@@ -99,11 +99,45 @@ export default function LiveInterventionHub() {
     });
     socketRef.current = socket;
 
+    socket.on('connect', () => {
+      console.log('✅ Connected LiveIntervention socket:', socket.id);
+    });
+
     socket.on('whatsapp:new_message', (newMsg) => {
       // Compare with current active session via ref
       if (newMsg.PhoneNumber === selectedSessionRef.current?.PhoneNumber) {
-        setMessages((prev) => [...prev, newMsg]);
+        setMessages((prev) => {
+          if (newMsg.ChatID && prev.some((m) => m.ChatID === newMsg.ChatID)) return prev;
+          return [...prev, newMsg];
+        });
       }
+      refreshSessions();
+    });
+
+    const handleHandoverEvent = (data) => {
+      const targetPhone = data.phoneNumber || data.PhoneNumber;
+      if (!targetPhone) return;
+
+      if (targetPhone === selectedSessionRef.current?.PhoneNumber) {
+        setSelectedSession((prev) => (prev ? { ...prev, Handover: true } : prev));
+      }
+      setSessions((prev) =>
+        prev.map((s) => (s.PhoneNumber === targetPhone ? { ...s, Handover: true } : s))
+      );
+      refreshSessions();
+    };
+
+    socket.on('whatsapp:handover_alert', handleHandoverEvent);
+    socket.on('bot:handover_triggered', handleHandoverEvent);
+
+    socket.on('whatsapp:session_updated', (data) => {
+      if (!data.PhoneNumber) return;
+      if (data.PhoneNumber === selectedSessionRef.current?.PhoneNumber) {
+        setSelectedSession((prev) => (prev ? { ...prev, Handover: data.Handover } : prev));
+      }
+      setSessions((prev) =>
+        prev.map((s) => (s.PhoneNumber === data.PhoneNumber ? { ...s, Handover: data.Handover } : s))
+      );
       refreshSessions();
     });
 

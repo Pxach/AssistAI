@@ -13,6 +13,8 @@ import {
   Smartphone
 } from 'lucide-react';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
 export default function ChatAnalyticsPage() {
   const [stats, setStats] = useState({
     usefulnessPct: 0,
@@ -68,11 +70,12 @@ export default function ChatAnalyticsPage() {
       try {
         setLoading(true);
         const response = await fetch(
-          `http://localhost:5000/api/dashboard/chat-stats?timeframe=${encodeURIComponent(timeframe)}`,
+          `${API_BASE}/api/dashboard/chat-stats?timeframe=${encodeURIComponent(timeframe)}`,
           {
             headers: {
               'Authorization': `Bearer ${localStorage.getItem('token')}`
-            }
+            },
+            cache: 'no-store'
           }
         );
         const result = await response.json();
@@ -107,7 +110,7 @@ export default function ChatAnalyticsPage() {
     try {
       // Passes current timeframe selection to CSV export endpoint
       const response = await fetch(
-        `http://localhost:5000/api/dashboard/export-csv?timeframe=${encodeURIComponent(timeframe)}`,
+        `${API_BASE}/api/dashboard/export-csv?timeframe=${encodeURIComponent(timeframe)}`,
         {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -144,14 +147,17 @@ export default function ChatAnalyticsPage() {
   ];
 
   // Pie Chart Conic Styling
+  const totalPie = (pieData.chatbot || 0) + (pieData.human || 0) + (pieData.unanswered || 0);
   const botDeg = ((pieData.chatbotPct || 0) / 100) * 360;
   const humanDeg = botDeg + ((pieData.humanPct || 0) / 100) * 360;
 
-  const pieConicStyle = `conic-gradient(
-    #7C5CFC 0deg ${botDeg}deg,
-    #FF8A3D ${botDeg}deg ${humanDeg}deg,
-    #EAB308 ${humanDeg}deg 360deg
-  )`;
+  const pieConicStyle = totalPie > 0 
+    ? `conic-gradient(
+        #7C5CFC 0deg ${botDeg}deg,
+        #FF8A3D ${botDeg}deg ${humanDeg}deg,
+        #EAB308 ${humanDeg}deg 360deg
+      )`
+    : 'conic-gradient(#E2E8F0 0deg 360deg)';
 
   return (
     <div className="flex h-screen bg-[#F8F9FD] text-slate-800 font-sans overflow-hidden">
@@ -419,33 +425,39 @@ export default function ChatAnalyticsPage() {
                   ))}
                 </div>
 
-                {chartData.map((item, idx) => {
-                  const botHeightPct = ((item.chatbot || 0) / maxBarVal) * 100;
-                  const humanHeightPct = ((item.human || 0) / maxBarVal) * 100;
+                {chartData.length > 0 ? (
+                  chartData.map((item, idx) => {
+                    const botHeightPct = ((item.chatbot || 0) / maxBarVal) * 100;
+                    const humanHeightPct = ((item.human || 0) / maxBarVal) * 100;
 
-                  return (
-                    <div key={idx} className="flex-1 flex flex-col justify-end items-center h-full z-10 group relative">
-                      {/* Hover Tooltip */}
-                      <div className="absolute -top-9 left-1/2 -translate-x-1/2 hidden group-hover:flex bg-slate-800 text-white text-[10px] py-1 px-2 rounded shadow-md whitespace-nowrap z-30 pointer-events-none">
-                        {item.label}: Bot ({item.chatbot}) | Human ({item.human})
-                      </div>
+                    return (
+                      <div key={idx} className="flex-1 flex flex-col justify-end items-center h-full z-10 group relative">
+                        {/* Hover Tooltip */}
+                        <div className="absolute -top-9 left-1/2 -translate-x-1/2 hidden group-hover:flex bg-slate-800 text-white text-[10px] py-1 px-2 rounded shadow-md whitespace-nowrap z-30 pointer-events-none">
+                          {item.label}: Bot ({item.chatbot}) | Human ({item.human})
+                        </div>
 
-                      {/* Stacked Bar Pillar */}
-                      <div className="w-2.5 rounded-full overflow-hidden flex flex-col justify-end bg-slate-100 h-full">
-                        {/* Chatbot Portion (Blue) */}
-                        <div 
-                          style={{ height: `${botHeightPct}%` }} 
-                          className="bg-[#3B82F6] w-full transition-all duration-300"
-                        />
-                        {/* Human Portion (Purple) */}
-                        <div 
-                          style={{ height: `${humanHeightPct}%` }} 
-                          className="bg-[#9333EA] w-full transition-all duration-300"
-                        />
+                        {/* Stacked Bar Pillar */}
+                        <div className="w-2.5 rounded-full overflow-hidden flex flex-col justify-end bg-slate-100 h-full">
+                          {/* Chatbot Portion (Blue) */}
+                          <div 
+                            style={{ height: `${botHeightPct}%` }} 
+                            className="bg-[#3B82F6] w-full transition-all duration-300"
+                          />
+                          {/* Human Portion (Purple) */}
+                          <div 
+                            style={{ height: `${humanHeightPct}%` }} 
+                            className="bg-[#9333EA] w-full transition-all duration-300"
+                          />
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                ) : (
+                  <div className="w-full flex items-center justify-center text-xs text-slate-400 font-medium z-10">
+                    {loading ? 'Loading conversations...' : 'No conversation records found for this timeframe'}
+                  </div>
+                )}
               </div>
 
               {/* X-Axis Labels */}

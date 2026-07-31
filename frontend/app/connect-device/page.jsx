@@ -96,13 +96,13 @@ useEffect(() => {
   socket.on('whatsapp:status_change', (data) => {
     console.log('Received status_change event:', data);
     if (data.status) setStatus(data.status);
-    if (data.phoneNumber) setPhoneNumber(data.phoneNumber);
+    if (data.phoneNumber !== undefined) setPhoneNumber(data.phoneNumber);
     if (data.connectedAt) setConnectedAt(data.connectedAt);
+    if (data.qrCode) setQrCode(data.qrCode);
 
     if (data.status === 'CONNECTED') {
       setQrCode(null);
     }
-    refreshStatus();
   });
 
   socket.on('whatsapp:qr', (data) => {

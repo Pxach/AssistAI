@@ -71,3 +71,54 @@ export async function patchSessionStatus({
     console.error(`[SessionSync] ❌ Failed to sync session status (${status}):`, err.message);
   }
 }
+
+/**
+ * Sends an HTTP POST to the backend sync-message endpoint reporting a new chat message.
+ */
+export async function syncChatMessage({ phoneNumber, senderType, message, handover = false, status = 'active' }) {
+  try {
+    const baseUrl = (await getConfig('DASHBOARD_API_URL')) || process.env.DASHBOARD_API_URL || 'http://localhost:5000';
+
+    const url = `${baseUrl}/api/whatsapp/sync-message`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phoneNumber, senderType, message, handover, status }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error(`[SessionSync] POST ${url} failed (${response.status}): ${text}`);
+    } else {
+      console.log(`[SessionSync] ✅ Chat message synced for ${phoneNumber} (${senderType})`);
+    }
+  } catch (err) {
+    console.error(`[SessionSync] ❌ Failed to sync chat message:`, err.message);
+  }
+}
+
+/**
+ * Sends an HTTP POST to the backend sync-handover endpoint reporting a handover event.
+ */
+export async function syncHandover({ phoneNumber, handover, reason = null, lastMessage = null }) {
+  try {
+    const baseUrl = (await getConfig('DASHBOARD_API_URL')) || process.env.DASHBOARD_API_URL || 'http://localhost:5000';
+
+    const url = `${baseUrl}/api/whatsapp/sync-handover`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phoneNumber, handover, reason, lastMessage }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error(`[SessionSync] POST ${url} failed (${response.status}): ${text}`);
+    } else {
+      console.log(`[SessionSync] ✅ Handover status synced for ${phoneNumber} (handover=${handover})`);
+    }
+  } catch (err) {
+    console.error(`[SessionSync] ❌ Failed to sync handover status:`, err.message);
+  }
+}
+

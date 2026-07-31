@@ -13,6 +13,8 @@ import {
   Smartphone  
 } from 'lucide-react';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
 export default function DashboardPage() {
   const [stats, setStats] = useState({
     totalConversations: 0,
@@ -54,11 +56,12 @@ export default function DashboardPage() {
       try {
         const token = localStorage.getItem('token');
         const response = await fetch(
-          `http://localhost:5000/api/dashboard/stats?timeframe=${encodeURIComponent(timeframe)}`,
+          `${API_BASE}/api/dashboard/stats?timeframe=${encodeURIComponent(timeframe)}`,
           {
             headers: {
               Authorization: `Bearer ${token}`
-            }
+            },
+            cache: 'no-store'
           }
         );
 
@@ -88,7 +91,7 @@ export default function DashboardPage() {
 
   const handleCsvDownload = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/dashboard/export-csv', {
+      const response = await fetch(`${API_BASE}/api/dashboard/export-csv`, {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`
         }
@@ -394,36 +397,41 @@ export default function DashboardPage() {
             <h3 className="text-xs font-semibold text-slate-500 mb-4">24 Hour Answer Deadlines</h3>
 
             <div className="space-y-5">
-              <div>
-                <div className="flex justify-between text-xs font-medium mb-1">
-                  <span className="text-slate-800">Conversation 1</span>
-                  <span className="text-slate-400">5 hours left</span>
-                </div>
-                <div className="w-full h-2.5 bg-red-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-red-500 rounded-full w-[20%]"></div>
-                </div>
-              </div>
+              {humanInterventions.length > 0 ? (
+                humanInterventions.slice(0, 3).map((item, idx) => {
+                  const createdAt = new Date(item.created_at || Date.now());
+                  const now = new Date();
+                  const elapsedHours = (now - createdAt) / (1000 * 60 * 60);
+                  const hoursLeft = Math.max(0, Math.round(24 - elapsedHours));
+                  const pct = Math.max(0, Math.min(100, Math.round((hoursLeft / 24) * 100)));
 
-              <div>
-                <div className="flex justify-between text-xs font-medium mb-1">
-                  <span className="text-slate-800">Conversation 2</span>
-                  <span className="text-slate-400">12 hours left</span>
-                </div>
-                <div className="w-full h-2.5 bg-orange-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-amber-500 rounded-full w-[50%]"></div>
-                </div>
-              </div>
+                  let colorClass = "bg-emerald-500";
+                  let bgClass = "bg-emerald-100";
+                  if (hoursLeft <= 6) {
+                    colorClass = "bg-red-500";
+                    bgClass = "bg-red-100";
+                  } else if (hoursLeft <= 12) {
+                    colorClass = "bg-amber-500";
+                    bgClass = "bg-amber-100";
+                  }
 
-              <div>
-                <div className="flex justify-between text-xs font-medium mb-1">
-                  <span className="text-slate-800">Conversation 3</span>
-                  <span className="text-slate-400">23 hours left</span>
+                  return (
+                    <div key={item.id || idx}>
+                      <div className="flex justify-between text-xs font-medium mb-1">
+                        <span className="text-slate-800">Conversation {item.conversation_id || item.id || idx + 1}</span>
+                        <span className="text-slate-400">{hoursLeft} hours left</span>
+                      </div>
+                      <div className={`w-full h-2.5 ${bgClass} rounded-full overflow-hidden`}>
+                        <div className={`h-full ${colorClass} rounded-full transition-all duration-300`} style={{ width: `${pct}%` }}></div>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-xs text-slate-400 py-6 text-center font-medium">
+                  {isLoading ? 'Loading deadlines...' : 'No active 24-hour response deadlines'}
                 </div>
-                <div className="w-full h-2.5 bg-emerald-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-emerald-500 rounded-full w-[95%]"></div>
-                </div>
-              </div>
-
+              )}
             </div>
           </div>
 

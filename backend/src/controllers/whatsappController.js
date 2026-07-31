@@ -1,20 +1,19 @@
 import db from '../database/db.js';
 
-// Get Current Connection Status
-// Get Current Connection Status
+// Helper to clean phone numbers (strips JID suffixes if present)
+const cleanPhoneNumber = (phone) => {
+  if (!phone) return '';
+  return phone.split('@')[0].split(':')[0].replace(/[^+\d]/g, '');
+};
+
+// 1. Get Current Connection Status
 export const getStatus = async (req, res) => {
   try {
     const { sessionKey = 'default' } = req.query;
     const session = await db('whatsapp_sessions').where('session_key', sessionKey).first();
 
     if (!session) {
-      return res.json({ success: true, data: { status: 'DISCONNECTED', phoneNumber: null } });
-    }
-
-    // Dev Fallback: If stuck in PAIRING without a QR, supply a mock QR
-    let qrCode = session.qr_code;
-    if (session.status === 'PAIRING' && !qrCode) {
-      qrCode = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=AssistAI_Mock_WhatsApp_Pairing_Token';
+      return res.json({ success: true, data: { status: 'DISCONNECTED', phoneNumber: null, qrCode: null, connectedAt: null } });
     }
 
     return res.json({
@@ -22,7 +21,7 @@ export const getStatus = async (req, res) => {
       data: {
         status: session.status,
         phoneNumber: session.phone_number,
-        qrCode: qrCode,
+        qrCode: session.qr_code,
         connectedAt: session.connected_at
       }
     });
@@ -32,13 +31,11 @@ export const getStatus = async (req, res) => {
   }
 };
 
-// Trigger Connection / Pairing Initialization
+// 2. Trigger Connection / Pairing Initialization
 export const connectWhatsApp = async (req, res) => {
   try {
     const { sessionKey = 'default' } = req.body;
-    const mockQrCode = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=AssistAI_Mock_WhatsApp_Pairing_Token';
 
-    // 1. Check if row exists, insert if missing, update if present
     const session = await db('whatsapp_sessions').where('session_key', sessionKey).first();
 
     if (session) {
@@ -46,22 +43,25 @@ export const connectWhatsApp = async (req, res) => {
         .where('session_key', sessionKey)
         .update({
           status: 'PAIRING',
-          qr_code: mockQrCode,
+          qr_code: null,
           updated_at: new Date()
         });
     } else {
       await db('whatsapp_sessions').insert({
         session_key: sessionKey,
         status: 'PAIRING',
-        qr_code: mockQrCode,
+        qr_code: null,
         created_at: new Date(),
         updated_at: new Date()
       });
     }
 
-    // 2. Emit socket event to update connected UI clients instantly
+    // Emit socket event to update connected UI clients instantly
     const io = req.app.get('io');
-    io.to(sessionKey).emit('whatsapp:qr', { qrCode: mockQrCode });
+    if (io) {
+      io.to(sessionKey).emit('whatsapp:status_change', { status: 'PAIRING' });
+      io.emit('whatsapp:status_change', { status: 'PAIRING' });
+    }
 
     return res.json({ success: true, message: 'Pairing process initiated.' });
   } catch (err) {
@@ -70,29 +70,176 @@ export const connectWhatsApp = async (req, res) => {
   }
 };
 
-// Trigger Connection / Pairing Initialization
-// export const connectWhatsApp = async (req, res) => {
-//   try {
-//     const { sessionKey = 'default' } = req.body;
+// 3. Update Connection Status from Engine (HTTP PATCH)
+export const updateSessionStatus = async (req, res) => {
+  try {
+    const { sessionKey = 'default', status, phoneNumber, qrCode, connectedAt } = req.body;
 
-//     // Update status in DB to PAIRING
-//     await db('whatsapp_sessions')
-//       .where('session_key', sessionKey)
-//       .update({ status: 'PAIRING', updated_at: new Date() });
+    if (!status) {
+      return res.status(400).json({ success: false, error: 'Status is required.' });
+    }
 
-//     // Emit event to notify Baileys engine (teammate's worker) to start pairing
-//     const io = req.app.get('io');
-//     io.to(sessionKey).emit('whatsapp:start_pairing', { sessionKey });
+    const session = await db('whatsapp_sessions').where('session_key', sessionKey).first();
 
-//     return res.json({ success: true, message: 'Pairing process initiated.' });
-//   } catch (err) {
-//     console.error('Error initiating connection:', err);
-//     return res.status(500).json({ success: false, error: 'Internal server error' });
-//   }
-// };
-// Trigger Connection / Pairing Initialization (With Mock Data for Dev)
+    const updateData = {
+      status,
+      phone_number: phoneNumber !== undefined ? phoneNumber : (session?.phone_number || null),
+      qr_code: qrCode !== undefined ? qrCode : (session?.qr_code || null),
+      connected_at: connectedAt || (status === 'CONNECTED' ? new Date() : session?.connected_at || null),
+      updated_at: new Date()
+    };
 
-// Disconnect / Log Out WhatsApp Session
+    if (session) {
+      await db('whatsapp_sessions').where('session_key', sessionKey).update(updateData);
+    } else {
+      await db('whatsapp_sessions').insert({
+        session_key: sessionKey,
+        ...updateData,
+        created_at: new Date()
+      });
+    }
+
+    // Broadcast WebSocket events to all connected clients
+    const io = req.app.get('io');
+    if (io) {
+      const payload = {
+        status,
+        phoneNumber: updateData.phone_number,
+        qrCode: updateData.qr_code,
+        connectedAt: updateData.connected_at
+      };
+
+      io.emit('whatsapp:status_change', payload);
+      io.to(sessionKey).emit('whatsapp:status_change', payload);
+
+      if (qrCode) {
+        io.emit('whatsapp:qr', { qrCode });
+        io.to(sessionKey).emit('whatsapp:qr', { qrCode });
+      }
+    }
+
+    return res.json({ success: true, message: 'Session status updated.' });
+  } catch (err) {
+    console.error('Error updating session status:', err);
+    return res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
+
+// 4. Sync Inbound/Outbound Chat Message from Engine (HTTP POST)
+export const syncChatMessage = async (req, res) => {
+  try {
+    const { phoneNumber: rawPhone, senderType, message, handover = false } = req.body;
+
+    const phoneNumber = cleanPhoneNumber(rawPhone);
+    if (!phoneNumber || !message) {
+      return res.status(400).json({ success: false, error: 'PhoneNumber and message are required.' });
+    }
+
+    // 1. Ensure Customer record exists
+    const customer = await db('Customer').where('PhoneNumber', phoneNumber).first();
+    if (!customer) {
+      await db('Customer').insert({
+        PhoneNumber: phoneNumber,
+        Name: `Customer (${phoneNumber})`,
+        PreferredLanguage: 'French'
+      });
+    }
+
+    // 2. Ensure ChatSession record exists
+    const chatSession = await db('ChatSession').where('PhoneNumber', phoneNumber).first();
+    if (!chatSession) {
+      await db('ChatSession').insert({
+        PhoneNumber: phoneNumber,
+        Active: true,
+        Handover: handover,
+        Status: handover ? 'escalated_to_human' : 'active',
+        Sentiment: 'Neutral',
+        CreatedAt: new Date()
+      });
+    } else if (handover !== undefined && chatSession.Handover !== handover) {
+      await db('ChatSession')
+        .where('PhoneNumber', phoneNumber)
+        .update({ Handover: handover });
+    }
+
+    // 3. Insert ChatLogs record
+    const [insertedLog] = await db('ChatLogs')
+      .insert({
+        PhoneNumber: phoneNumber,
+        sender_type: senderType || 'customer',
+        message: message,
+        CreatedAt: new Date()
+      })
+      .returning('*');
+
+    // 4. Emit real-time WebSocket events
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('whatsapp:new_message', insertedLog);
+      io.emit('whatsapp:session_updated', { PhoneNumber: phoneNumber, Handover: handover });
+    }
+
+    return res.json({ success: true, data: insertedLog });
+  } catch (err) {
+    console.error('Error syncing chat message:', err);
+    return res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
+
+// 5. Sync Handover Status from Engine (HTTP POST)
+export const syncHandover = async (req, res) => {
+  try {
+    const { phoneNumber: rawPhone, handover, reason, lastMessage } = req.body;
+
+    const phoneNumber = cleanPhoneNumber(rawPhone);
+    if (!phoneNumber) {
+      return res.status(400).json({ success: false, error: 'PhoneNumber is required.' });
+    }
+
+    const session = await db('ChatSession').where('PhoneNumber', phoneNumber).first();
+
+    if (session) {
+      await db('ChatSession')
+        .where('PhoneNumber', phoneNumber)
+        .update({
+          Handover: handover,
+          Status: handover ? 'escalated_to_human' : 'active'
+        });
+    } else {
+      await db('ChatSession').insert({
+        PhoneNumber: phoneNumber,
+        Active: true,
+        Handover: handover,
+        Status: handover ? 'escalated_to_human' : 'active',
+        Sentiment: 'Neutral',
+        CreatedAt: new Date()
+      });
+    }
+
+    // Broadcast Socket.io handover alert
+    const io = req.app.get('io');
+    if (io) {
+      const alertPayload = {
+        event: 'bot:handover_triggered',
+        phoneNumber,
+        reason: reason || 'Handover state updated by engine.',
+        lastMessage: lastMessage || '',
+        timestamp: new Date().toISOString()
+      };
+
+      io.emit('handover_alert', alertPayload);
+      io.emit('bot:handover_triggered', alertPayload);
+      io.emit('whatsapp:session_updated', { PhoneNumber: phoneNumber, Handover: handover });
+    }
+
+    return res.json({ success: true, message: `Handover updated to ${handover}` });
+  } catch (err) {
+    console.error('Error syncing handover status:', err);
+    return res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
+
+// 6. Disconnect / Log Out WhatsApp Session
 export const disconnectWhatsApp = async (req, res) => {
   try {
     const { sessionKey = 'default' } = req.body;
@@ -109,7 +256,10 @@ export const disconnectWhatsApp = async (req, res) => {
 
     // Notify Baileys engine & frontend
     const io = req.app.get('io');
-    io.to(sessionKey).emit('whatsapp:status_change', { status: 'DISCONNECTED' });
+    if (io) {
+      io.to(sessionKey).emit('whatsapp:status_change', { status: 'DISCONNECTED' });
+      io.emit('whatsapp:status_change', { status: 'DISCONNECTED' });
+    }
 
     return res.json({ success: true, message: 'WhatsApp session disconnected.' });
   } catch (err) {
@@ -117,7 +267,8 @@ export const disconnectWhatsApp = async (req, res) => {
     return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 };
-// Get all active chat sessions with customer details
+
+// 7. Get all active chat sessions with customer details
 export const getActiveSessions = async (req, res) => {
   try {
     const sessions = await db('ChatSession')
@@ -139,7 +290,7 @@ export const getActiveSessions = async (req, res) => {
   }
 };
 
-// Get chat logs/messages for a specific phone number
+// 8. Get chat logs/messages for a specific phone number
 export const getChatLogs = async (req, res) => {
   try {
     const { phoneNumber } = req.params;
@@ -155,7 +306,7 @@ export const getChatLogs = async (req, res) => {
   }
 };
 
-// Resume AI Bot control for a chat
+// 9. Toggle Handover state (Resume AI or Hand over to Human)
 export const toggleHandover = async (req, res) => {
   try {
     const { phoneNumber, handover } = req.body;
@@ -164,6 +315,14 @@ export const toggleHandover = async (req, res) => {
       .where('PhoneNumber', phoneNumber)
       .update({ Handover: handover });
 
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('whatsapp:session_updated', { PhoneNumber: phoneNumber, Handover: handover });
+      if (handover) {
+        io.emit('handover_alert', { phoneNumber, reason: 'Human agent manually paused AI bot.', timestamp: new Date().toISOString() });
+      }
+    }
+
     return res.json({ success: true, message: `Handover set to ${handover}` });
   } catch (err) {
     console.error('Error toggling handover:', err);
@@ -171,7 +330,7 @@ export const toggleHandover = async (req, res) => {
   }
 };
 
-// Send Human Agent Outbound Message
+// 10. Send Human Agent Outbound Message
 export const sendHumanMessage = async (req, res) => {
   try {
     const { phoneNumber, message } = req.body;
@@ -194,12 +353,16 @@ export const sendHumanMessage = async (req, res) => {
       .where('PhoneNumber', phoneNumber)
       .update({ Handover: true });
 
-    // 3. Emit event to Baileys engine to dispatch outbound WhatsApp message
+    // 3. Emit real-time events to frontend & Baileys engine
     const io = req.app.get('io');
-    io.emit('whatsapp:send_outbound', {
-      toPhoneNumber: phoneNumber,
-      messageText: message
-    });
+    if (io) {
+      io.emit('whatsapp:new_message', insertedMsg);
+      io.emit('whatsapp:session_updated', { PhoneNumber: phoneNumber, Handover: true });
+      io.emit('whatsapp:send_outbound', {
+        toPhoneNumber: phoneNumber,
+        messageText: message
+      });
+    }
 
     return res.json({ success: true, data: insertedMsg });
   } catch (err) {

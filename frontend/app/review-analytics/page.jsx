@@ -13,6 +13,8 @@ import {
   Smartphone
 } from 'lucide-react';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
 export default function ReviewAnalyticsPage() {
   const [stats, setStats] = useState({
     totalReviews: 0,
@@ -63,11 +65,12 @@ export default function ReviewAnalyticsPage() {
       try {
         setLoading(true);
         const response = await fetch(
-          `http://localhost:5000/api/dashboard/review-stats?timeframe=${encodeURIComponent(timeframe)}`,
+          `${API_BASE}/api/dashboard/review-stats?timeframe=${encodeURIComponent(timeframe)}`,
           {
             headers: {
               'Authorization': `Bearer ${localStorage.getItem('token')}`
-            }
+            },
+            cache: 'no-store'
           }
         );
         const result = await response.json();
@@ -102,7 +105,7 @@ export default function ReviewAnalyticsPage() {
     try {
       // Passes current timeframe selection to CSV export endpoint
       const response = await fetch(
-        `http://localhost:5000/api/dashboard/export-csv?timeframe=${encodeURIComponent(timeframe)}`,
+        `${API_BASE}/api/dashboard/export-csv?timeframe=${encodeURIComponent(timeframe)}`,
         {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -130,7 +133,11 @@ export default function ReviewAnalyticsPage() {
   const labelStep = Math.max(1, Math.ceil(chartData.length / 10));
 
   // Sentiment Pie Chart Conic Calculation
+  const totalReviewPie = (pieData.positive || 0) + (pieData.negative || 0);
   const positiveDegree = ((pieData.positivePct || 0) / 100) * 360;
+  const reviewPieStyle = totalReviewPie > 0
+    ? `conic-gradient(#65D44B 0deg ${positiveDegree}deg, #FF8A3D ${positiveDegree}deg 360deg)`
+    : 'conic-gradient(#E2E8F0 0deg 360deg)';
 
   // Category Pie Chart Multi-Color Conic Calculation
   const categoryPalette = ['#7C5CFC', '#FF8A3D', '#3B82F6', '#EAB308', '#10B981', '#EC4899'];
@@ -421,9 +428,9 @@ export default function ReviewAnalyticsPage() {
 
               <div className="flex flex-col sm:flex-row items-center justify-around gap-6">
                 <div 
-                  className="w-44 h-44 rounded-full shadow-inner shrink-0"
+                  className="w-44 h-44 rounded-full shadow-inner shrink-0 transition-all duration-500"
                   style={{
-                    background: `conic-gradient(#65D44B 0deg ${positiveDegree}deg, #FF8A3D ${positiveDegree}deg 360deg)`
+                    background: reviewPieStyle
                   }}
                 />
 
