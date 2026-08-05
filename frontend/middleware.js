@@ -6,9 +6,7 @@ export function middleware(request) {
   const referer = request.headers.get('referer');
 
   // 1. BLOCK DIRECT ADDRESS BAR ENTRY
-  // If sec-fetch-site is 'none' OR referer is missing, the user typed the URL directly
   const isDirectAddressBarEntry = fetchSite === 'none' || !referer;
-
   if (isDirectAddressBarEntry) {
     return NextResponse.redirect(new URL('/', request.url));
   }
@@ -18,7 +16,14 @@ export function middleware(request) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
-  return NextResponse.next();
+  // 3. SET NO-CACHE HEADERS (Prevents back button from showing cached pages)
+  const response = NextResponse.next();
+  response.headers.set(
+    'Cache-Control',
+    'no-store, no-cache, must-revalidate, proxy-revalidate'
+  );
+  
+  return response;
 }
 
 export const config = {
@@ -31,5 +36,8 @@ export const config = {
     '/review-analytics/:path*',
     '/booking-analytics',
     '/booking-analytics/:path*',
+    '/LiveIntervention',
+    '/connect-device',
+    '/settings-page'
   ],
 };

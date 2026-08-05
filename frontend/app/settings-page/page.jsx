@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   Key,
   FileText,
@@ -11,11 +12,12 @@ import {
   AlertCircle,
   Eye,
   EyeOff,
-  Link,
+  Link as LinkIcon,
   Calendar,
   ShieldCheck,
   RefreshCw,
   FileIcon,
+  ArrowLeft,
 } from "lucide-react";
 
 // Backend API Base URL
@@ -89,7 +91,7 @@ const CONFIG_SECTIONS = [
   {
     title: "Integration & Webhook URLs",
     description: "Redirect links and internal API base endpoints",
-    icon: Link,
+    icon: LinkIcon,
     fields: [
       {
         key: "google_review_url",
@@ -297,6 +299,17 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-[#F8F9FD] p-6 lg:p-10 text-gray-800">
+      {/* Top-Left Back Button */}
+      <div className="mb-6">
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 hover:text-gray-900 transition shadow-sm"
+        >
+          <ArrowLeft className="w-4 h-4 text-gray-500" />
+          Dashboard
+        </Link>
+      </div>
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-4">
         <div>

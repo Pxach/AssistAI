@@ -137,3 +137,12 @@ export const login = async (req, res) => {
         });
     }
 };
+
+export const logout = (req, res) => {
+  res.clearCookie('token', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax', // must match whatever you used when the cookie was set at login
+  });
+  res.json({ message: 'Logged out' });
+};

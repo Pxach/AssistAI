@@ -10,8 +10,11 @@ import {
   MessageSquare, 
   Home,
   Headphones,
+  Settings,
   Smartphone
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { LogOut } from 'lucide-react'; 
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -46,7 +49,31 @@ export default function ChatAnalyticsPage() {
     name: 'Admin User',
     email: 'admin@example.com'
   });
+  const router = useRouter();
+  // Load user info from localStorage
+  useEffect(() => {
+    const storedEmail = localStorage.getItem('email') || localStorage.getItem('userEmail');
+    const storedName = localStorage.getItem('name') || localStorage.getItem('userName');
 
+    if (storedEmail) {
+      queueMicrotask(() => {
+        setUser({
+          name: storedName || storedEmail.split('@')[0].toUpperCase(),
+          email: storedEmail
+        });
+      });
+    }
+  }, []);
+
+  // Logout Handler
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('email');
+    localStorage.removeItem('userEmail');
+    localStorage.removeItem('name');
+    localStorage.removeItem('userName');
+    router.push('/');
+  };
   // Safely sync user info from localStorage without triggering cascading render warnings
   useEffect(() => {
     const storedEmail = localStorage.getItem('email') || localStorage.getItem('userEmail');
@@ -227,7 +254,16 @@ export default function ChatAnalyticsPage() {
         <span>Booking Analytics</span>
       </Link>
 
-      {/* 7. Download Action */}
+      {/* 7. Settings */}
+      <Link 
+        href="/settings-page" 
+        className="flex items-center space-x-3 w-full text-left font-medium hover:opacity-80 transition"
+      >
+        <Settings className="w-5 h-5" />
+        <span>Settings</span>
+      </Link>
+
+      {/* 8. Download Action */}
       <button 
         onClick={handleCsvDownload}
         className="flex items-center space-x-3 w-full text-left font-medium hover:opacity-80 transition pt-2"
@@ -236,6 +272,31 @@ export default function ChatAnalyticsPage() {
         <span>Download as CSV</span>
       </button>
     </nav>
+  </div>
+    {/* SIDEBAR FOOTER  */}
+  <div className="pt-4 border-t border-white/10 mt-auto">
+    <p className="text-xs font-bold text-white/80 mb-3 tracking-wide">AssistAI</p>
+    <div className="flex items-center justify-between bg-white/10 p-2.5 rounded-xl backdrop-blur-xs">
+      <div className="flex items-center space-x-3 min-w-0">
+        {/* User Avatar Circle */}
+        <div className="w-8 h-8 rounded-full bg-white/20 text-white font-bold flex items-center justify-center shrink-0 text-xs">
+          {user.name ? user.name.charAt(0).toUpperCase() : 'A'}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-bold text-white truncate leading-tight">{user.name}</p>
+          <p className="text-[10px] text-white/70 truncate leading-tight mt-0.5">{user.email}</p>
+        </div>
+      </div>
+
+      {/* Log Out Button */}
+      <button
+        onClick={handleLogout}
+        title="Log Out"
+        className="p-1.5 hover:bg-white/20 text-white/80 hover:text-white rounded-lg transition shrink-0 ml-1 cursor-pointer"
+      >
+        <LogOut className="w-4 h-4" />
+      </button>
+    </div>
   </div>
 </aside>
 
