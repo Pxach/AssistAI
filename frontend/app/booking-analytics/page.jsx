@@ -67,7 +67,8 @@ export default function BookingAnalyticsPage() {
           {
             headers: {
               'Authorization': `Bearer ${localStorage.getItem('token')}`
-            }
+            },
+            cache: 'no-store'
           }
         );
         const result = await response.json();

@@ -6,10 +6,15 @@ import { handleFaq } from '../handlers/faqHandler.js';
 import { handleHandover } from '../handlers/handoverHandler.js';
 import { handleBooking } from '../handlers/bookingHandler.js';
 import { strings, getLocaleString } from '../locales/strings.js';
+import { minifyState } from '../utils/stateMinifier.js';
 
 // FIXED: Signature updated to accept senderPhone, botPhone, and ioContext from whatsappGateway.js
 export async function processUserMessage(rawInput, language = 'fr', history = [], bookingState = {}, senderPhone = "", botPhone = "", ioContext = {}) {
   
+  // Limit conversation history payload to last 3 messages to prevent TPM Rate Limits
+  const recentHistory = Array.isArray(history) ? history.slice(-3) : [];
+  const minifiedState = minifyState(bookingState);
+
   // 1. Interactive Button Interceptor (Bypass AI & Sanitization)
   if (typeof rawInput === 'object' && rawInput.type === 'interactive_button') {
     const buttonId = rawInput.buttonId;
@@ -84,18 +89,6 @@ export async function processUserMessage(rawInput, language = 'fr', history = []
   const cleanText = securityResult.cleanText;
 
   // 4. Intent Routing
-  //
-  // STEP 1 FIX (ISSUE-02): The hardcoded handoverKeywords regex block has been
-  // removed. It was brittle in Darija/Arabic due to substring collisions (e.g.
-  // "kndwi m3ak" triggering /dwi m3a/i). The LLM intent router already has
-  // full conversation history, booking state, and explicit HANDOVER AGREEMENT /
-  // ORPHAN AGREEMENT rules — it is the correct place to make this decision.
-  //
-  // STEP 3 FIX (ISSUE-08): If a booking is already in progress
-  // (bookingState.status === 'pending'), the intent is unambiguous — the user
-  // is answering a booking question. We skip the LLM router entirely to save
-  // one full API round-trip per booking turn.
-
   let aiIntent;
   let aiDetectedLang = language;
   let aiHandoverReason = "";
@@ -110,7 +103,7 @@ export async function processUserMessage(rawInput, language = 'fr', history = []
     aiDetectedLang = language; // preserve sticky language lock
     aiHandoverReason = "";
   } else {
-    const routerResponse = await routeIntent(cleanText, language, bookingState, history);
+    const routerResponse = await routeIntent(cleanText, language, minifiedState, recentHistory);
     aiIntent = typeof routerResponse === 'string' ? routerResponse : routerResponse.intent;
     aiDetectedLang = typeof routerResponse === 'object' ? routerResponse.detectedLanguage : language;
     aiHandoverReason = typeof routerResponse === 'object' ? routerResponse.handoverReason : "";
@@ -140,8 +133,8 @@ export async function processUserMessage(rawInput, language = 'fr', history = []
       break;
 
     case 'booking': 
-      // FIXED: Passed bookingState, history, senderPhone, botPhone, AND ioContext to the booking handler
-      handlerResult = await handleBooking(cleanText, activeLang, bookingState, history, senderPhone, botPhone, ioContext);
+      // FIXED: Passed bookingState, recentHistory, senderPhone, botPhone, AND ioContext to the booking handler
+      handlerResult = await handleBooking(cleanText, activeLang, bookingState, recentHistory, senderPhone, botPhone, ioContext);
       break;
 
     case 'unknown':

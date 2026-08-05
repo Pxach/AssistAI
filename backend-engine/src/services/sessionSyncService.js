@@ -122,3 +122,26 @@ export async function syncHandover({ phoneNumber, handover, reason = null, lastM
   }
 }
 
+/**
+ * Sends an HTTP POST to the backend to persist an appointment to the database.
+ */
+export async function syncAppointment(bookingState) {
+  try {
+    const baseUrl = (await getConfig('DASHBOARD_API_URL')) || process.env.DASHBOARD_API_URL || 'http://localhost:5000';
+    const url = `${baseUrl}/api/appointments/sync`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(bookingState)
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error(`[SessionSync] POST ${url} failed (${response.status}): ${text}`);
+    } else {
+      console.log(`[SessionSync] ✅ Appointment synced successfully for ${bookingState.customer_name}`);
+    }
+  } catch (err) {
+    console.error(`[SessionSync] ❌ Failed to sync appointment:`, err.message);
+  }
+}

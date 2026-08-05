@@ -13,6 +13,37 @@ const applyTimeframeFilter = (query, timeframe, dateColumn = 'created_at') => {
     return d;
   };
 
+  if (dateColumn === 'appointment_date') {
+    const filterDate = (subDays, subMonths, subYears) => {
+      const d = getSubtractedDate(subDays, subMonths, subYears);
+      const dateStr = d.toISOString().split('T')[0];
+      return query.where(function() {
+        this.where('appointment_date', '>=', dateStr).orWhere('created_at', '>=', d);
+      });
+    };
+    switch (timeframe?.toLowerCase()) {
+      case 'today':
+      case 'per day':
+      case 'day':
+        return filterDate(1, 0, 0);
+      case 'this week':
+      case 'per week':
+      case 'week':
+        return filterDate(7, 0, 0);
+      case 'this month':
+      case 'per month':
+      case 'month':
+        return filterDate(0, 1, 0);
+      case 'this year':
+      case 'per year':
+      case 'year':
+        return filterDate(0, 0, 1);
+      case 'all-time':
+      default:
+        return query;
+    }
+  }
+
   switch (timeframe?.toLowerCase()) {
     case 'today':
     case 'per day':
@@ -52,7 +83,7 @@ export const getDashboardStats = async (req, res) => {
       .count('ReviewID as count')
       .first();
 
-    const bookingsCount = await applyTimeframeFilter(db('appointments'), timeframe, 'created_at')
+    const bookingsCount = await applyTimeframeFilter(db('appointments'), timeframe, 'appointment_date')
       .count('id as count')
       .first();
 

@@ -1,7 +1,8 @@
-// src/handlers/bookingHandler.js
 import { callAI } from '../services/ai/llmClient.js';
 import { insertEvent } from '../services/calendarService.js'; 
 import { strings, getLocaleString } from '../locales/strings.js';
+import { syncAppointment } from '../services/sessionSyncService.js';
+import { minifyState } from '../utils/stateMinifier.js';
 
 // 🚀 DATABASE MOCK FUNCTION (Future-Proofed)
 async function fetchCompanyCatalogFromDB() {
@@ -9,12 +10,11 @@ async function fetchCompanyCatalogFromDB() {
     services: [
       { id: 1, name: "Database Optimization", department: "it", duration: 60 },
       { id: 2, name: "Server Configuration", department: "it", duration: 120 },
-      { id: 3, name: "UI/UX Review", department: "design", duration: 45 },
-      { id: 4, name: "Brand Consultation", department: "marketing", duration: 30 }
+      { id: 3, name: "UI/UX Review", department: "design", duration: 45 }
     ],
     specialists: [
       { id: 101, name: "Sarah", department: "it", services: [1, 2] },
-      { id: 102, name: "Alex", department: "it", services: [1, 4] },
+      { id: 102, name: "Alex", department: "it", services: [1] },
       { id: 103, name: "Karim", department: "design", services: [3] }
     ]
   };
@@ -34,11 +34,8 @@ export async function handleBooking(message, language, bookingState = {}, histor
     ...bookingState
   };
 
-  // NOTE (ISSUE-01 REVERTED): Auto-seeding contact_info from senderPhone was
-  // removed. WhatsApp now routes some connections through an @lid identifier
-  // (a non-dialable opaque ID), so senderPhone cannot be relied upon as a real
-  // phone number. The askContact waterfall step is intentionally preserved to
-  // force the user to type their actual contact number or email manually.
+  const recentHistory = Array.isArray(history) ? history.slice(-3) : [];
+  const minifiedPromptState = minifyState(currentBookingState);
 
   // 🚀 Dynamic local timezone locking
   const today = new Date().toLocaleString('en-US', { 
@@ -67,48 +64,68 @@ export async function handleBooking(message, language, bookingState = {}, histor
     ${JSON.stringify(liveCatalog)}
 
     CONVERSATION HISTORY:
-    ${history.map(item => `${item.role}: ${item.parts[0].text}`).join("\n")}
+    ${recentHistory.map(item => `${item.role}: ${item.parts[0].text}`).join("\n")}
     
     CURRENT BOOKING STATE: 
-    ${JSON.stringify(currentBookingState)}
+    ${JSON.stringify(minifiedPromptState)}
     
     User's Message: "${message}"
 
     Rules & Validations:
     - Update the JSON with any new information provided.
-    - SPECIALIST VALIDATION & "FIRST AVAILABLE": Check the AVAILABLE CATALOG mapping. If a user asks for "first available", pick a specialist whose 'services' array contains the requested service ID. 
+    - SPECIALIST SELECTION & AUTO-ASSIGNMENT: Check the AVAILABLE CATALOG mapping. If the user names a specialist, use that name. If the user asks for "first available" or proceeds to specify date, time, name, or contact without specifying a specialist, automatically pick the first available specialist whose 'services' array contains the requested service ID (e.g., Sarah for Database Optimization).
     - SPECIALIST REJECTION: If a user rejects a specialist, check if anyone else provides that service. If NO ONE else is available for that service, keep 'specialist_name' as null and explicitly tell the user in 'ai_direct_reply' that this specialist is the only one who handles this service.
-    - SPLIT DATE & TIME: Extract 'appointment_date' (YYYY-MM-DD) first. Do NOT extract an appointment time unless the user specifies a precise hour. 
-    - STRICT TIME RULE: Vague time words (like "morning", "afternoon", "sbah", "lil") are NOT valid appointment times. Keep 'appointment_time' as null until an exact hour is given.
+    - SPLIT DATE & TIME: Convert relative date terms ("Ghada", "demain", "tomorrow") into exact YYYY-MM-DD format based on Today's Date. "Ghada" means tomorrow. Extract 'appointment_date' (YYYY-MM-DD) first. When the user specifies an hour (e.g., "10", "f 10", "10h", "at 10", "10:00"), extract it as a formatted time string (e.g., "10:00").
+    - STRICT TIME RULE: Vague time words without a specific number (like "morning", "afternoon", "sbah", "lil") are NOT valid appointment times. Keep 'appointment_time' as null until a specific hour is given. Explicit numbers like "10", "f 10", "10h" ARE valid exact hours ("10:00").
     - SENDER PHONE RESOLUTION: If the user refers to their current chat line ("this number", "my number"), extract their actual phone number ("${senderPhone}") into 'contact_info'.
     - STRICT CONTACT FORMAT & TROLL PROTECTION: 'contact_info' MUST be perfectly formatted. 
       * For Phone: Only numbers, optional spaces, and an optional leading '+'. Reject obvious fake numbers (e.g., 12345678) AND the business's own phone number ("${botPhone}").
       * For Email: MUST contain EXACTLY ONE '@' symbol, and end with a valid domain. Do NOT accept multiple '@' symbols. 
       * If invalid, keep 'contact_info' as null and use 'ai_direct_reply' to politely ask for a real format.
-    - STRICT CONFIRMATION RULE: ONLY set "user_confirmed" to true IF the user is explicitly confirming the FINAL summary of all their details. Do NOT set it to true if they are just saying "yes" or "oui" in the middle of the conversation. If ANY of the core fields (customer_name, contact_info, appointment_date, appointment_time) are null, "user_confirmed" MUST remain false.
+    - STRICT CONFIRMATION RULE: If all core fields (customer_name, contact_info, appointment_date, appointment_time) are already filled in CURRENT BOOKING STATE and the user responds with any confirmation/agreement word (e.g., "Oui kolchi mzian", "Oui", "Kolchi mzian", "C'est bon", "Confirmed", "Yes", "Ok"), you MUST set "user_confirmed": true and set "ai_direct_reply": null. Do NOT set "user_confirmed": true if any required field is still null.
     - IF the user corrects a detail, update that field and ensure "user_confirmed" remains false.
     - STRICT TONE RULE: DO NOT start your responses with greetings (like "Ahlan", "Salam") if conversation history exists.
     
-    JSON STATE CARRYOVER (STRICT): 
-    - You are acting as a state machine. If a field is already filled, assume it is locked in. Copy that exact value into your current JSON response.
+    - CUSTOMER NAME EXTRACTION: When the user provides a name (e.g., "Zayd", "Karim", "John"), extract it directly into 'customer_name'.
+    - JSON STATE CARRYOVER (STRICT & CRITICAL): You are acting as a persistent state machine. If a field in CURRENT BOOKING STATE is already filled (not null), you MUST copy that exact value into your response. NEVER overwrite or reset an already filled field to null unless the user explicitly asks to cancel or change it.
     - NEVER leave 'service_requested' empty if it was already established.
     - NEVER extract generic conversational words ('dispo', 'yes', 'specialist', 'awl whd', 'oui') as a 'service_requested'.
     
-    Q&A & DYNAMIC REPLIES (STRICT RULES):
-    - YOU ARE NOT A CHATBOT. Do not ask the user for missing booking info.
-    - ONLY populate the 'ai_direct_reply' field IF the user explicitly asks a direct question OR if a validation error occurs.
+    Q&A & COLLECTION FLOW (STRICT SEQUENTIAL RULES):
+    - You are a CONVERSATIONAL data collector. Your job is to collect EVERY required field before confirming.
+    - REQUIRED FIELDS (in collection order): service_requested → specialist_name → appointment_date → appointment_time → customer_name → contact_info → user_confirmed.
+    - MISSING FIELD HANDLING: If the user's message fills one field but other required fields are still null, set 'ai_direct_reply' to politely ask for the NEXT missing field. Do NOT silently skip fields.
+    - contact_info IS STRICTLY REQUIRED. Never proceed to confirmation if contact_info is null. If the user gives only their name, ask for their phone number or email next.
     - CATALOG FORMATTING RULE: When a user asks what services are available, you MUST explicitly pair each service with the specialists who provide it, reading the ID mappings from the catalog. Formulate this STRICTLY in the ACTIVE CONVERSATION LANGUAGE.
 
-    Respond strictly with a valid JSON object matching EXACTLY this schema:
+    ====================================================================
+    BOOKING CONFIRMATION GATING RULE — READ THIS CAREFULLY:
+    ====================================================================
+    You MUST NOT set "user_confirmed": true UNLESS ALL of the following conditions are true SIMULTANEOUSLY:
+      1. customer_name    is a non-null, non-empty string in the CURRENT BOOKING STATE.
+      2. contact_info     is a non-null, non-empty string in the CURRENT BOOKING STATE.
+      3. service_requested is a non-null, non-empty string in the CURRENT BOOKING STATE.
+      4. appointment_date  is a non-null YYYY-MM-DD string in the CURRENT BOOKING STATE.
+      5. appointment_time  is a non-null time string in the CURRENT BOOKING STATE.
+      6. The user's CURRENT message is an EXPLICIT, UNAMBIGUOUS confirmation of the booking summary
+         (e.g., "Oui", "Yes", "Ok", "C'est bon", "Confirmed", "Kolchi mzian", "Oui kolchi mzian", "d'accord").
+         A user's name, phone number, or any data-providing message is NOT a confirmation.
+
+    If ANY of conditions 1–5 is not yet met, you MUST set "user_confirmed": false and populate
+    'ai_direct_reply' asking for the NEXT missing field — even if the user used a word that sounds like confirmation.
+    ====================================================================
+
+    Respond strictly with a valid JSON object matching EXACTLY this schema.
+    Fields marked [REQUIRED] must NEVER be null when user_confirmed is true:
     {
-      "customer_name": "<string or null>",
-      "contact_info": "<valid phone/email string or null>",
-      "specialist_name": "<string or null>",
-      "service_requested": "<string or null>",
-      "appointment_date": "<YYYY-MM-DD or null>",
-      "appointment_time": "<exact time string or null>",
-      "user_confirmed": <boolean true or false>,
-      "ai_direct_reply": "<string for warnings/Q&A, or null>"
+      "customer_name":      "<string or null>",
+      "contact_info":       "<valid phone/email string or null>  [REQUIRED for confirmation]",
+      "specialist_name":    "<string or null>",
+      "service_requested":  "<string or null>",
+      "appointment_date":   "<YYYY-MM-DD or null>  [REQUIRED for confirmation]",
+      "appointment_time":   "<exact time string or null>  [REQUIRED for confirmation]",
+      "user_confirmed":     <boolean — MUST be false unless ALL 6 gating conditions above are met>,
+      "ai_direct_reply":    "<string asking for the next missing field, or confirmation summary, or null>"
     }
   `;
 
@@ -117,7 +134,11 @@ export async function handleBooking(message, language, bookingState = {}, histor
     const extractedData = JSON.parse(rawAiText);
     
     const { ai_direct_reply, ...stateData } = extractedData;
-    currentBookingState = { ...currentBookingState, ...stateData };
+    for (const [key, val] of Object.entries(stateData)) {
+      if (val !== null && val !== undefined) {
+        currentBookingState[key] = val;
+      }
+    }
     
     if (ai_direct_reply) {
       currentBookingState._temp_reply = ai_direct_reply;
@@ -160,6 +181,21 @@ export async function handleBooking(message, language, bookingState = {}, histor
     currentBookingState.user_confirmed = false;
   }
 
+  // Server-side confirmation fallback guard:
+  // If all required fields are present and the user's message is an UNAMBIGUOUS, EXACT confirmation phrase,
+  // force user_confirmed to true.
+  // ⚠️  The regex must ONLY match standalone confirmation words — NOT partial matches such as an
+  //     email address that contains "confirm" (e.g., "confirmation@mail.com") or any data message.
+  if (allRequiredFieldsPresent && !currentBookingState.user_confirmed) {
+    const textLower = message.trim().toLowerCase();
+    // Anchored full-string match: only exact, unambiguous confirmation phrases trigger this guard.
+    const isConfirmationText = /^(oui|yes|ok|c'est bon|confirmed|kolchi mzian|oui kolchi mzian|d'accord|parfait|mzian|nhaar)$/i.test(textLower);
+    if (isConfirmationText) {
+      console.log("✅ State machine guard: Server-side auto-confirmation detected.");
+      currentBookingState.user_confirmed = true;
+    }
+  }
+
   // 1. Highest Priority: If the user explicitly confirmed, finalize and trigger the Calendar
   if (currentBookingState.user_confirmed) {
     currentBookingState.status = "confirmed";
@@ -172,6 +208,9 @@ export async function handleBooking(message, language, bookingState = {}, histor
       
       // ✅ Mark as synced for your future database/dashboard
       currentBookingState.calendar_synced = true; 
+
+      // 🚀 THE DATABASE EVENT TRIGGER
+      await syncAppointment(currentBookingState);
 
       if (calendarLink) {
         botReply += getLocaleString(strings.booking.calendarAppend, lang, calendarLink);

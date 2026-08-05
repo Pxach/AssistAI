@@ -92,3 +92,119 @@ export const processBooking = async (req, res) => {
         });
     }
 };
+
+export const syncAppointment = async (req, res) => {
+    try {
+        const {
+            customer_name,
+            contact_info,
+            appointment_date,
+            appointment_time,
+            service_requested,
+            specialist_name
+        } = req.body;
+
+        // ✅ FIX: Validate required fields before touching the DB.
+        // Previously missing fields produced an ambiguous DB error or a silent partial insert.
+        if (!appointment_date || !appointment_time) {
+            return res.status(400).json({
+                success: false,
+                message: 'appointment_date and appointment_time are required to sync an appointment.'
+            });
+        }
+        if (!contact_info) {
+            return res.status(400).json({
+                success: false,
+                message: 'contact_info is required to sync an appointment.'
+            });
+        }
+
+        const newRecord = {
+            customer_name: customer_name || 'Unknown',
+            contact_info: contact_info,
+            department: 'general',
+            specialist_id: null,
+            service_id: 1,
+            appointment_date,
+            appointment_time,
+            status: 'confirmed',
+            review_prompt_sent: false,
+            created_at: new Date().toISOString()
+        };
+
+        const [inserted] = await db('appointments').insert(newRecord).returning('*');
+
+        // ✅ FIX: If the DB insert silently produced no record, treat it as a hard failure
+        // rather than returning 201 with empty/undefined data.
+        if (!inserted) {
+            throw new Error('DB insert returned no record. Check DB constraints and connection.');
+        }
+
+        res.status(201).json({
+            success: true,
+            message: 'Appointment synchronized to DB',
+            data: inserted
+        });
+    } catch (error) {
+        // Always log the full error on the server so it appears in the Express terminal.
+        console.error('[AppointmentController] ❌ Failed to sync appointment:', error);
+        // Return 500 so the calling service (sessionSyncService / test spy) can detect the failure.
+        res.status(500).json({
+            success: false,
+            message: 'Failed to sync appointment',
+            error: error.message
+        });
+    }
+};
+
+
+export const getAppointmentsTomorrow = async (req, res) => {
+    try {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const dateStr = tomorrow.toISOString().split('T')[0];
+
+        const appointments = await db('appointments').where({
+            appointment_date: dateStr,
+            status: 'confirmed'
+        });
+
+        const formatted = appointments.map(appt => ({
+            clientJid: appt.contact_info.includes('@') ? appt.contact_info : `${appt.contact_info.replace('+', '')}@s.whatsapp.net`,
+            clientName: appt.customer_name,
+            service: 'Service', 
+            specialist: 'Specialist',
+            appointmentTime: appt.appointment_time,
+            language: 'fr'
+        }));
+
+        res.status(200).json(formatted);
+    } catch (error) {
+        console.error("Error fetching tomorrow's appointments:", error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+export const getAppointmentsEndedToday = async (req, res) => {
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        const appointments = await db('appointments').where({
+            appointment_date: today,
+            status: 'confirmed',
+            review_prompt_sent: false
+        });
+
+        const formatted = appointments.map(appt => ({
+            clientJid: appt.contact_info.includes('@') ? appt.contact_info : `${appt.contact_info.replace('+', '')}@s.whatsapp.net`,
+            clientName: appt.customer_name,
+            service: 'Service',
+            appointmentTime: appt.appointment_time,
+            language: 'fr'
+        }));
+
+        res.status(200).json(formatted);
+    } catch (error) {
+        console.error("Error fetching today's appointments:", error);
+        res.status(500).json({ error: error.message });
+    }
+};

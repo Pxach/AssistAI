@@ -16,11 +16,10 @@ async function resolveCatalogIds(bookingState) {
       { id: 1, name: 'Database Optimization', department: 'it' },
       { id: 2, name: 'Server Configuration',  department: 'it' },
       { id: 3, name: 'UI/UX Review',           department: 'design' },
-      { id: 4, name: 'Brand Consultation',     department: 'marketing' },
     ],
     specialists: [
       { id: 101, name: 'Sarah', services: [1, 2] },
-      { id: 102, name: 'Alex',  services: [1, 4] },
+      { id: 102, name: 'Alex',  services: [1] },
       { id: 103, name: 'Karim', services: [3] },
     ],
   };

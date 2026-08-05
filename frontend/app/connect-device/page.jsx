@@ -78,20 +78,20 @@ export default function ConnectDevicePage() {
   }, []);
 
   // 2. Real-time Socket Connection
-useEffect(() => {
-  const socket = io(API_BASE, {
-    transports: ['websocket', 'polling'],
-    reconnection: true,
-    reconnectionAttempts: 5
-  });
+  useEffect(() => {
+    const socket = io(API_BASE, {
+      transports: ['websocket'],
+      reconnection: true,
+      reconnectionAttempts: 5
+    });
 
-  socketRef.current = socket;
+    socketRef.current = socket;
 
-  socket.on('connect', () => {
-    console.log('✅ Connected to backend WebSocket:', socket.id);
-    // Emits join_session to match backend
-    socket.emit('join_session', SESSION_KEY);
-  });
+    socket.on('connect', () => {
+      console.log('✅ Connected to backend WebSocket:', socket.id);
+      // Emits join_session to match backend
+      socket.emit('join_session', SESSION_KEY);
+    });
 
   socket.on('whatsapp:status_change', (data) => {
     console.log('Received status_change event:', data);

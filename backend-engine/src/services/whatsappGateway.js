@@ -364,8 +364,8 @@ export async function connectToWhatsApp(io, sessionKey) {
 
         console.log(`\n📩 New test message from ${senderJid}: ${textMessage}`);
 
-        // 🚀 SPEED OPTIMIZATION: Only send the last 6 messages (3 interactions)
-        const recentHistory = session.history.slice(-6);
+        // 🚀 SPEED OPTIMIZATION: Only send the last 3 messages to prevent TPM rate limits
+        const recentHistory = session.history.slice(-3);
 
         // FIXED [CRIT-1 & CRIT-3]: Wrapped all AI processing and send calls in a
         // single try/catch. An unhandled rejection inside an async event handler

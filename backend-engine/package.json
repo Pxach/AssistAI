@@ -7,6 +7,7 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon --ignore auth_info_baileys/ --ignore session/ index.js",
+    "test:booking": "node scripts/testBookingFlow.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

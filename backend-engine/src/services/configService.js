@@ -36,7 +36,7 @@ export async function getKnowledgeBase() {
   return [
     'Mock company info:',
     '- Business name: Expleo Company',
-    '- Services offered: Database Optimization, Server Configuration, UI/UX Review, Brand Consultation.',
+    '- Services offered: Database Optimization, Server Configuration, UI/UX Review.',
     '- Business hours: Monday to Friday, 09:00 to 17:00 (Casablanca time).',
     '- Location: Casablanca, Morocco.',
     '- Contact email: support@expleo.com',

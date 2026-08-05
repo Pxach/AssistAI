@@ -95,7 +95,7 @@ export default function LiveInterventionHub() {
   // 2. Persistent Single Socket Connection
   useEffect(() => {
     const socket = io(API_BASE, {
-      transports: ['websocket', 'polling']
+      transports: ['websocket']
     });
     socketRef.current = socket;
 

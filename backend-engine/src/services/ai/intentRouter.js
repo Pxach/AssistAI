@@ -1,6 +1,7 @@
 // src/services/ai/intentRouter.js
 import { callAI } from './llmClient.js';
 import { getKnowledgeBase } from '../configService.js';
+import { minifyState } from '../../utils/stateMinifier.js';
 
 export async function routeIntent(text, language, bookingState, history) {
   const today = new Date().toISOString().split('T')[0];
@@ -9,8 +10,11 @@ export async function routeIntent(text, language, bookingState, history) {
   // when making intent decisions (e.g. detecting valid service mentions).
   const knowledgeBaseText = await getKnowledgeBase();
 
-  const lastAiMessage = history.length > 0 && history[history.length - 1].role === 'model'
-    ? history[history.length - 1].parts[0].text
+  const recentHistory = Array.isArray(history) ? history.slice(-3) : [];
+  const minifiedBookingState = minifyState(bookingState);
+
+  const lastAiMessage = recentHistory.length > 0 && recentHistory[recentHistory.length - 1].role === 'model'
+    ? recentHistory[recentHistory.length - 1].parts[0].text
     : "";
 
   const prompt = `
@@ -28,10 +32,10 @@ export async function routeIntent(text, language, bookingState, history) {
     Today's Date is: ${today}
 
     CONVERSATION HISTORY:
-    ${history.map(item => `${item.role}: ${item.parts[0].text}`).join("\n")}
+    ${recentHistory.map(item => `${item.role}: ${item.parts[0].text}`).join("\n")}
 
     CURRENT BOOKING STATE:
-    ${JSON.stringify(bookingState)}
+    ${JSON.stringify(minifiedBookingState)}
 
     SHORT-TERM CONTEXT:
     AI's Last Message: "${lastAiMessage}"

@@ -37,9 +37,8 @@ app.use('/api/settings', settingsRoutes);
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: ALLOWED_ORIGINS,
-    methods: ['GET', 'POST'],
-    credentials: true
+    origin: '*',
+    methods: ['GET', 'POST']
   },
   // Support both WebSocket and Polling fallback for local dev stability
   transports: ['websocket', 'polling']

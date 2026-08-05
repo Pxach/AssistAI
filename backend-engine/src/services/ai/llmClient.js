@@ -26,6 +26,7 @@
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PROVIDER REGISTRY
+// Fallback priority order: ['gemini', 'groq', 'mistral', 'nvidia']
 // ─────────────────────────────────────────────────────────────────────────────
 const PROVIDER_REGISTRY = [
 
@@ -35,7 +36,7 @@ const PROVIDER_REGISTRY = [
     id:           'gemini',
     keyEnvVar:    'GEMINI_API_KEY',
     modelEnvVar:  'GEMINI_MODEL',
-    defaultModel: 'gemini-2.0-flash',
+    defaultModel: 'gemini-3.1-flash-lite',
 
     buildUrl: (model, apiKey) =>
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
@@ -72,8 +73,10 @@ const PROVIDER_REGISTRY = [
     buildBody: (prompt, model, options) => {
       const body = {
         model,
-        messages:    [{ role: 'user', content: prompt }],
-        temperature: 0.0,
+        messages:          [{ role: 'user', content: prompt }],
+        temperature:       options.jsonMode ? 0.0 : 0.7,
+        max_tokens:        options.jsonMode ? 1024 : 300,
+        frequency_penalty: options.jsonMode ? 0.0 : 0.5,
       };
       if (options.jsonMode) body.response_format = { type: 'json_object' };
       return JSON.stringify(body);
@@ -82,15 +85,15 @@ const PROVIDER_REGISTRY = [
     parseResponse: (data) => data.choices[0].message.content.trim(),
   },
 
-  // ── 3. CEREBRAS INFERENCE ──────────────────────────────────────────────────
-  // High-speed Llama inference platform. OpenAI-compatible endpoint.
+  // ── 3. MISTRAL AI PLATFORM (mistral.ai) ─────────────────────────────────
+  // High-performance French/multilingual LLM models API. OpenAI-compatible endpoint.
   {
-    id:           'cerebras',
-    keyEnvVar:    'CEREBRAS_API_KEY',
-    modelEnvVar:  'CEREBRAS_MODEL',
-    defaultModel: 'gpt-oss-120b',
+    id:           'mistral',
+    keyEnvVar:    'MISTRAL_API_KEY',
+    modelEnvVar:  'MISTRAL_MODEL',
+    defaultModel: 'open-mistral-nemo',
 
-    buildUrl: () => 'https://api.cerebras.ai/v1/chat/completions',
+    buildUrl: () => 'https://api.mistral.ai/v1/chat/completions',
 
     buildHeaders: (apiKey) => ({
       'Content-Type':  'application/json',
@@ -101,7 +104,8 @@ const PROVIDER_REGISTRY = [
       const body = {
         model,
         messages:    [{ role: 'user', content: prompt }],
-        temperature: 0.0,
+        temperature: options.jsonMode ? 0.0 : 0.7,
+        max_tokens:  options.jsonMode ? 1024 : 300,
       };
       if (options.jsonMode) body.response_format = { type: 'json_object' };
       return JSON.stringify(body);
@@ -110,30 +114,27 @@ const PROVIDER_REGISTRY = [
     parseResponse: (data) => data.choices[0].message.content.trim(),
   },
 
-  // ── 4. OPENROUTER (Fallback Aggregator) ────────────────────────────────────
-  // Routes to hundreds of models. Useful as a last-resort fallback.
-  // OpenAI-compatible endpoint with additional Referer/Title headers.
+  // ── 4. NVIDIA NIM INFERENCE API (integrate.api.nvidia.com) ─────────────────
+  // High-speed enterprise AI model inference API. OpenAI-compatible endpoint.
   {
-    id:           'openrouter',
-    keyEnvVar:    'OPENROUTER_API_KEY',
-    modelEnvVar:  'OPENROUTER_MODEL',
-    defaultModel: 'meta-llama/llama-3.3-70b-instruct:free',
+    id:           'nvidia',
+    keyEnvVar:    'NVIDIA_API_KEY',
+    modelEnvVar:  'NVIDIA_MODEL',
+    defaultModel: 'meta/llama-3.1-70b-instruct',
 
-    buildUrl: () => 'https://openrouter.ai/api/v1/chat/completions',
+    buildUrl: () => 'https://integrate.api.nvidia.com/v1/chat/completions',
 
     buildHeaders: (apiKey) => ({
       'Content-Type':  'application/json',
       'Authorization': `Bearer ${apiKey}`,
-      // Required by OpenRouter for attribution and analytics
-      'HTTP-Referer':  process.env.OPENROUTER_SITE_URL || 'http://localhost:5000',
-      'X-Title':       process.env.OPENROUTER_SITE_NAME || 'AssistAI',
     }),
 
     buildBody: (prompt, model, options) => {
       const body = {
         model,
         messages:    [{ role: 'user', content: prompt }],
-        temperature: 0.0,
+        temperature: options.jsonMode ? 0.0 : 0.7,
+        max_tokens:  options.jsonMode ? 1024 : 300,
       };
       if (options.jsonMode) body.response_format = { type: 'json_object' };
       return JSON.stringify(body);
@@ -152,21 +153,39 @@ const PROVIDER_REGISTRY = [
 const RETRIABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 
 // ─────────────────────────────────────────────────────────────────────────────
+// HELPER: Retrieve API key for a provider
+// Checks environment variable defined in keyEnvVar (e.g. GEMINI_API_KEY).
+// ─────────────────────────────────────────────────────────────────────────────
+function getProviderApiKey(provider) {
+  const envVars = Array.isArray(provider.keyEnvVar)
+    ? provider.keyEnvVar
+    : [provider.keyEnvVar];
+
+  for (const envVar of envVars) {
+    const val = process.env[envVar];
+    if (val && val.trim().length > 0) {
+      return val.trim().replace(/^["']|["']$/g, '');
+    }
+  }
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // BUILD ACTIVE PROVIDER LIST
 // Scanned at callAI() invocation time so env changes take effect without a
-// server restart. Providers are returned in PROVIDER_REGISTRY order —
-// which defines the failover priority.
+// server restart. Providers are returned strictly in PROVIDER_REGISTRY order:
+// ['gemini', 'groq', 'mistral', 'nvidia', 'openrouter'] — which defines the failover priority.
 // ─────────────────────────────────────────────────────────────────────────────
 function buildActiveProviders() {
   return PROVIDER_REGISTRY
     .filter((p) => {
-      const key = process.env[p.keyEnvVar];
-      return key && key.trim().length > 0;
+      const key = getProviderApiKey(p);
+      return Boolean(key);
     })
     .map((p) => ({
       ...p,
-      apiKey: process.env[p.keyEnvVar].trim(),
-      model:  (process.env[p.modelEnvVar] || p.defaultModel).trim(),
+      apiKey: getProviderApiKey(p),
+      model:  (process.env[p.modelEnvVar] || p.defaultModel).trim().replace(/^["']|["']$/g, ''),
     }));
 }
 
@@ -195,6 +214,16 @@ async function callProvider(provider, prompt, options) {
     const isRetriable = RETRIABLE_STATUS_CODES.has(response.status);
     const errorBody   = await response.text().catch(() => '(unreadable body)');
     const label       = isRetriable ? 'Retriable' : 'Fatal';
+
+    // If Gemini hits HTTP 429 rate limit, fallback to gemini-1.5-flash-8b before rotating providers
+    if (provider.id === 'gemini' && response.status === 429 && !provider.model.includes('8b')) {
+      console.warn(
+        `[LLM Client] ⚠️ Gemini model "${provider.model}" hit HTTP 429 rate limit — attempting fallback model "gemini-1.5-flash-8b"`
+      );
+      const fallbackProvider = { ...provider, model: 'gemini-1.5-flash-8b' };
+      return await callProvider(fallbackProvider, prompt, options);
+    }
+
     throw new Error(
       `${label} HTTP ${response.status} from "${provider.id}": ${errorBody.slice(0, 300)}`
     );
@@ -238,7 +267,7 @@ export async function callAI(prompt, options = {}) {
   if (activeProviders.length === 0) {
     throw new Error(
       '[LLM Client] ❌ No AI providers are configured. ' +
-      'Set at least one API key (GEMINI_API_KEY, GROQ_API_KEY, CEREBRAS_API_KEY, or OPENROUTER_API_KEY) in your environment.'
+      'Set at least one API key (GEMINI_API_KEY, GROQ_API_KEY, MISTRAL_API_KEY, NVIDIA_API_KEY, or OPENROUTER_API_KEY) in your environment.'
     );
   }
 
@@ -266,6 +295,9 @@ export async function callAI(prompt, options = {}) {
         `[LLM Client] ⚠️ Provider "${provider.id}" failed — rotating to next. ` +
         `Reason: ${err.message}`
       );
+      if (err.message.includes('429')) {
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+      }
     }
   }
 

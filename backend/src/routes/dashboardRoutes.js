@@ -8,13 +8,21 @@ const router = express.Router();
 const getStartDate = (timeframe) => {
   const now = new Date();
   if (timeframe === 'Today' || timeframe === 'Per Day') {
-    return new Date(now.setHours(0, 0, 0, 0));
+    const d = new Date(now);
+    d.setHours(0, 0, 0, 0);
+    return d;
   } else if (timeframe === 'This Week' || timeframe === 'Per Week') {
-    return new Date(now.setDate(now.getDate() - 7));
+    const d = new Date(now);
+    d.setDate(d.getDate() - 7);
+    return d;
   } else if (timeframe === 'This Month' || timeframe === 'Per Month') {
-    return new Date(now.setMonth(now.getMonth() - 1));
+    const d = new Date(now);
+    d.setMonth(d.getMonth() - 1);
+    return d;
   } else if (timeframe === 'This Year' || timeframe === 'Per Year') {
-    return new Date(now.setFullYear(now.getFullYear() - 1));
+    const d = new Date(now);
+    d.setFullYear(d.getFullYear() - 1);
+    return d;
   }
   return null;
 };
@@ -30,6 +38,12 @@ router.get('/stats', async (req, res) => {
     // Filter helper for dynamic column date filtering
     const applyDateFilter = (query, dateCol = 'created_at') => {
       if (startDate) {
+        if (dateCol === 'appointment_date') {
+          const dateStr = startDate.toISOString().split('T')[0];
+          return query.where(function() {
+            this.where('appointment_date', '>=', dateStr).orWhere('created_at', '>=', startDate);
+          });
+        }
         return query.where(dateCol, '>=', startDate);
       }
       return query;
@@ -39,8 +53,8 @@ router.get('/stats', async (req, res) => {
     const convRes = await applyDateFilter(db('ChatSession'), 'CreatedAt').count('* as count').first();
     const totalConversations = parseInt(convRes?.count, 10) || 0;
 
-    // 2. Total Bookings (appointments -> created_at)
-    const bookingRes = await applyDateFilter(db('appointments'), 'created_at').count('* as count').first();
+    // 2. Total Bookings (appointments -> appointment_date or created_at)
+    const bookingRes = await applyDateFilter(db('appointments'), 'appointment_date').count('* as count').first();
     const totalBookings = parseInt(bookingRes?.count, 10) || 0;
 
     // 3. Reviews Breakdown (Review -> "CreatedAt", "Sentiment", "Rating")
@@ -72,33 +86,62 @@ router.get('/stats', async (req, res) => {
       .first();
     const alertsToday = parseInt(alertsRes?.count, 10) || 0;
 
-    // 5. Activity Bar Chart Data (Adapts dynamically to timeframe)
+    // 5. Activity Bar Chart Data (Prioritizes appointments, falls back to ChatSession)
     let activityData = [];
     if (['Today', 'Per Day', 'This Week', 'Per Week'].includes(timeframe)) {
       const dailyRaw = await applyDateFilter(
-        db('ChatSession')
+        db('appointments')
           .select(
-            db.raw("TO_CHAR(\"CreatedAt\", 'MM/DD') as label"),
+            db.raw("TO_CHAR(COALESCE(appointment_date, created_at), 'MM/DD') as label"),
             db.raw('COUNT(*) as val')
           )
-          .groupBy(db.raw("TO_CHAR(\"CreatedAt\", 'MM/DD')"))
+          .groupBy(db.raw("TO_CHAR(COALESCE(appointment_date, created_at), 'MM/DD')"))
           .orderBy('label', 'asc'),
-        'CreatedAt'
+        'appointment_date'
       );
       activityData = dailyRaw.map((r) => ({ label: r.label, val: parseInt(r.val, 10) }));
     } else {
       const monthlyRaw = await applyDateFilter(
-        db('ChatSession')
+        db('appointments')
           .select(
-            db.raw("UPPER(TO_CHAR(\"CreatedAt\", 'Mon')) as label"),
-            db.raw("EXTRACT(MONTH FROM \"CreatedAt\") as m_num"),
+            db.raw("UPPER(TO_CHAR(COALESCE(appointment_date, created_at), 'Mon')) as label"),
+            db.raw("EXTRACT(MONTH FROM COALESCE(appointment_date, created_at)) as m_num"),
             db.raw('COUNT(*) as val')
           )
-          .groupBy(db.raw("UPPER(TO_CHAR(\"CreatedAt\", 'Mon')), EXTRACT(MONTH FROM \"CreatedAt\")"))
-          .orderBy(db.raw("EXTRACT(MONTH FROM \"CreatedAt\")"), 'asc'),
-        'CreatedAt'
+          .groupBy(db.raw("UPPER(TO_CHAR(COALESCE(appointment_date, created_at), 'Mon')), EXTRACT(MONTH FROM COALESCE(appointment_date, created_at))"))
+          .orderBy(db.raw("EXTRACT(MONTH FROM COALESCE(appointment_date, created_at))"), 'asc'),
+        'appointment_date'
       );
       activityData = monthlyRaw.map((r) => ({ label: r.label, val: parseInt(r.val, 10) }));
+    }
+
+    if (activityData.length === 0) {
+      if (['Today', 'Per Day', 'This Week', 'Per Week'].includes(timeframe)) {
+        const dailyRaw = await applyDateFilter(
+          db('ChatSession')
+            .select(
+              db.raw("TO_CHAR(\"CreatedAt\", 'MM/DD') as label"),
+              db.raw('COUNT(*) as val')
+            )
+            .groupBy(db.raw("TO_CHAR(\"CreatedAt\", 'MM/DD')"))
+            .orderBy('label', 'asc'),
+          'CreatedAt'
+        );
+        activityData = dailyRaw.map((r) => ({ label: r.label, val: parseInt(r.val, 10) }));
+      } else {
+        const monthlyRaw = await applyDateFilter(
+          db('ChatSession')
+            .select(
+              db.raw("UPPER(TO_CHAR(\"CreatedAt\", 'Mon')) as label"),
+              db.raw("EXTRACT(MONTH FROM \"CreatedAt\") as m_num"),
+              db.raw('COUNT(*) as val')
+            )
+            .groupBy(db.raw("UPPER(TO_CHAR(\"CreatedAt\", 'Mon')), EXTRACT(MONTH FROM \"CreatedAt\")"))
+            .orderBy(db.raw("EXTRACT(MONTH FROM \"CreatedAt\")"), 'asc'),
+          'CreatedAt'
+        );
+        activityData = monthlyRaw.map((r) => ({ label: r.label, val: parseInt(r.val, 10) }));
+      }
     }
 
     // 6. Human Interventions
@@ -141,50 +184,60 @@ router.get('/booking-stats', async (req, res) => {
     const { timeframe = 'All-time' } = req.query;
     const startDate = getStartDate(timeframe);
 
-    const applyDateFilter = (query, dateCol = 'created_at') => {
+    const applyDateFilter = (query, dateCol = 'appointment_date') => {
       if (startDate) {
-        return query.where(dateCol, '>=', startDate);
+        const dateStr = startDate.toISOString().split('T')[0];
+        return query.where(function() {
+          this.where('appointment_date', '>=', dateStr).orWhere('created_at', '>=', startDate);
+        });
       }
       return query;
     };
 
-    const totalRequestsRes = await applyDateFilter(db('appointments')).count('id as count').first();
+    const totalRequestsRes = await applyDateFilter(db('appointments'), 'appointment_date').count('id as count').first();
     const totalBookingRequests = parseInt(totalRequestsRes?.count, 10) || 0;
 
-    const confirmedRes = await applyDateFilter(db('appointments'))
-      .whereIn('status', ['confirmed', 'completed'])
+    const confirmedRes = await applyDateFilter(db('appointments'), 'appointment_date')
+      .whereIn(db.raw('LOWER(status)'), ['confirmed', 'completed'])
       .count('id as count')
       .first();
     const totalConfirmedBookings = parseInt(confirmedRes?.count, 10) || 0;
 
-    const unconfirmedRes = await applyDateFilter(db('appointments'))
-      .whereIn('status', ['pending', 'unconfirmed'])
+    const unconfirmedRes = await applyDateFilter(db('appointments'), 'appointment_date')
+      .whereIn(db.raw('LOWER(status)'), ['pending', 'unconfirmed'])
       .count('id as count')
       .first();
     const totalUnconfirmedBookings = parseInt(unconfirmedRes?.count, 10) || 0;
 
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
+    const todayStr = todayStart.toISOString().split('T')[0];
     const todayRes = await db('appointments')
-      .where('created_at', '>=', todayStart)
+      .where(function() {
+        this.where('created_at', '>=', todayStart).orWhere('appointment_date', '>=', todayStr);
+      })
       .count('id as count')
       .first();
     const bookingsToday = parseInt(todayRes?.count, 10) || 0;
 
     const weekStart = new Date();
     weekStart.setDate(weekStart.getDate() - 7);
+    const weekStr = weekStart.toISOString().split('T')[0];
     const weekRes = await db('appointments')
-      .where('created_at', '>=', weekStart)
+      .where(function() {
+        this.where('created_at', '>=', weekStart).orWhere('appointment_date', '>=', weekStr);
+      })
       .count('id as count')
       .first();
     const bookingsThisWeek = parseInt(weekRes?.count, 10) || 0;
 
     const peakMonthRes = await applyDateFilter(
       db('appointments')
-        .select(db.raw("TRIM(TO_CHAR(appointment_date, 'Month')) as month_name"))
+        .select(db.raw("TRIM(TO_CHAR(COALESCE(appointment_date, created_at), 'Month')) as month_name"))
         .count('id as count')
-        .groupBy(db.raw("TRIM(TO_CHAR(appointment_date, 'Month'))"))
-        .orderBy('count', 'desc')
+        .groupBy(db.raw("TRIM(TO_CHAR(COALESCE(appointment_date, created_at), 'Month'))"))
+        .orderBy('count', 'desc'),
+      'appointment_date'
     ).first();
     const peakBookingMonth = peakMonthRes ? peakMonthRes.month_name : 'N/A';
 
@@ -193,7 +246,8 @@ router.get('/booking-stats', async (req, res) => {
         .select('appointment_time')
         .count('id as count')
         .groupBy('appointment_time')
-        .orderBy('count', 'desc')
+        .orderBy('count', 'desc'),
+      'appointment_date'
     ).first();
 
     let mostBookedTimeSlot = 'N/A';
@@ -213,17 +267,19 @@ router.get('/booking-stats', async (req, res) => {
     if (['Today', 'Per Day', 'This Week', 'Per Week'].includes(timeframe)) {
       chartQuery = applyDateFilter(
         db('appointments')
-          .select(db.raw("TO_CHAR(created_at, 'MM/DD') as label"))
+          .select(db.raw("TO_CHAR(COALESCE(appointment_date, created_at), 'MM/DD') as label"))
           .count('id as val')
-          .groupBy(db.raw("TO_CHAR(created_at, 'MM/DD')"))
-          .orderBy('label', 'asc')
+          .groupBy(db.raw("TO_CHAR(COALESCE(appointment_date, created_at), 'MM/DD')"))
+          .orderBy('label', 'asc'),
+        'appointment_date'
       );
     } else {
       chartQuery = applyDateFilter(
         db('appointments')
-          .select(db.raw("UPPER(TO_CHAR(created_at, 'Mon')) as label"))
+          .select(db.raw("UPPER(TO_CHAR(COALESCE(appointment_date, created_at), 'Mon')) as label"))
           .count('id as val')
-          .groupBy(db.raw("UPPER(TO_CHAR(created_at, 'Mon'))"))
+          .groupBy(db.raw("UPPER(TO_CHAR(COALESCE(appointment_date, created_at), 'Mon'))")),
+        'appointment_date'
       );
     }
 

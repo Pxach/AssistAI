@@ -1,8 +1,8 @@
-// src/services/reminderService.js
 import cron from 'node-cron';
 import { armFeedbackFlag } from './whatsappGateway.js';
 import { checkFeedbackEligibility } from './feedbackEligibility.js';
 import { strings, getLocaleString } from '../locales/strings.js';
+import { getConfig } from './configService.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MOCK DATA LAYER
@@ -12,38 +12,16 @@ import { strings, getLocaleString } from '../locales/strings.js';
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Mock: returns confirmed appointments scheduled for tomorrow.
- * Each appointment must contain:
- *   - clientJid       {string}  — WhatsApp JID (e.g. "212766014551@s.whatsapp.net")
- *   - clientName      {string}  — Customer's name
- *   - service         {string}  — Service booked
- *   - specialist      {string}  — Specialist name
- *   - appointmentTime {string}  — "HH:MM" format
- *   - language        {string}  — "fr" | "en" | "ar" | "darija"
+ * Fetches confirmed appointments scheduled for tomorrow from the backend database.
  */
 async function fetchAppointmentsTomorrow() {
-  // TODO: Replace with real DB query:
-  // const tomorrow = getTomorrowDateString();
-  // return await db.appointments.findAll({ where: { date: tomorrow, status: 'confirmed' } });
-
-  return [
-    {
-      clientJid: '212766014551@s.whatsapp.net',
-      clientName: 'Zayd',
-      service: 'Database Optimization',
-      specialist: 'Sarah',
-      appointmentTime: '14:00',
-      language: 'fr'
-    },
-    {
-      clientJid: '212600000001@s.whatsapp.net',
-      clientName: 'Fatima',
-      service: 'UI/UX Review',
-      specialist: 'Karim',
-      appointmentTime: '10:30',
-      language: 'darija'
-    }
-  ];
+  const baseUrl = (await getConfig('DASHBOARD_API_URL')) || process.env.DASHBOARD_API_URL || 'http://localhost:5000';
+  const url = `${baseUrl}/api/appointments/tomorrow`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch tomorrow's appointments: ${response.status}`);
+  }
+  return await response.json();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -54,30 +32,16 @@ async function fetchAppointmentsTomorrow() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Mock: returns confirmed appointments that concluded today.
- * Each appointment must contain:
- *   - clientJid       {string}  — WhatsApp JID
- *   - clientName      {string}  — Customer's name
- *   - service         {string}  — Service that was rendered
- *   - appointmentTime {string}  — "HH:MM" the appointment started
- *   - language        {string}  — "fr" | "en" | "ar" | "darija"
+ * Fetches confirmed appointments that concluded today from the backend database.
  */
 async function fetchAppointmentsEndedToday() {
-  // TODO: Replace with real DB query:
-  // const today = getTodayDateString();
-  // return await db.appointments.findAll({
-  //   where: { date: today, status: 'confirmed', feedbackSent: false }
-  // });
-
-  return [
-    {
-      clientJid: '212766014551@s.whatsapp.net',
-      clientName: 'Zayd',
-      service: 'Database Optimization',
-      appointmentTime: '14:00',
-      language: 'fr'
-    }
-  ];
+  const baseUrl = (await getConfig('DASHBOARD_API_URL')) || process.env.DASHBOARD_API_URL || 'http://localhost:5000';
+  const url = `${baseUrl}/api/appointments/concluded-today`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch today's concluded appointments: ${response.status}`);
+  }
+  return await response.json();
 }
 
 /**
