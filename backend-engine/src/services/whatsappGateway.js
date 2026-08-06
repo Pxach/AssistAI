@@ -12,7 +12,7 @@ import { patchSessionStatus, syncChatMessage, syncHandover } from './sessionSync
 import { strings, getLocaleString } from '../locales/strings.js';
 import { io as socketClient } from 'socket.io-client';
 
-const ADMIN_JID = '212663095839@s.whatsapp.net'; // TODO: Update with real manager JID
+const ADMIN_JID = process.env.WA_ADMIN_JID || '';
 const INACTIVITY_LIMIT = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
 // Number of consecutive failures (unknown intent OR repeated identical reply) before
 // the anti-loop mechanism breaks the cycle and escalates to a human agent.
@@ -31,6 +31,7 @@ function initDashboardSocket(sock) {
     });
 
     dashboardSocket.on('connect', () => {
+        // Connected to dashboard socket.io server
     });
 
     dashboardSocket.on('whatsapp:send_outbound', async ({ toPhoneNumber, messageText }) => {
@@ -312,14 +313,17 @@ export async function connectToWhatsApp(io, sessionKey) {
             return; // Return immediately so human managers can reply manually without bot interference
         }
 
-        // 🚨 WHITELIST CHECK
-        const allowedTestNumbers = [
-            '212766014551@s.whatsapp.net',
-            '11991582249020@lid'
-        ];
+        // In development/test mode, restrict processing to whitelisted numbers.
+        // In production, all messages are processed normally.
+        if (process.env.NODE_ENV !== 'production') {
+            const allowedTestNumbers = [
+                '212766014551@s.whatsapp.net',
+                '11991582249020@lid'
+            ];
 
-        if (!allowedTestNumbers.includes(senderJid)) {
-            return;
+            if (!allowedTestNumbers.includes(senderJid)) {
+                return;
+            }
         }
 
         // Log incoming user message to ChatLogs table

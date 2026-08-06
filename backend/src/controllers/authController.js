@@ -2,6 +2,10 @@ import db from '../database/db.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
+if (!process.env.JWT_SECRET) {
+  throw new Error('[Auth] JWT_SECRET is not set. Add it to your .env file.');
+}
+
 export const register = async (req, res) => {
     const { email, password, companyName } = req.body;
 
@@ -56,7 +60,7 @@ export const register = async (req, res) => {
         const adminId = newAdmin.AdminUserID || newAdmin.id;
         const token = jwt.sign(
             { id: adminId, role: newAdmin.Role },
-            process.env.JWT_SECRET || 'supersecretkey',
+            process.env.JWT_SECRET,
             { expiresIn: '1d' }
         );
 
@@ -113,7 +117,7 @@ export const login = async (req, res) => {
         const adminId = user.AdminUserID || user.id;
         const token = jwt.sign(
             { id: adminId, role: user.Role },
-            process.env.JWT_SECRET || 'supersecretkey',
+            process.env.JWT_SECRET,
             { expiresIn: '1d' }
         );
 

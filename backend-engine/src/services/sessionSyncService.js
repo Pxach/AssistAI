@@ -62,7 +62,6 @@ export async function patchSessionStatus({
     if (!response.ok) {
       const text = await response.text();
       console.error(`[SessionSync] PATCH ${url} failed (${response.status}): ${text}`);
-    } else {
     }
   } catch (err) {
     // Network error, DNS failure, etc. — log but never propagate.
@@ -87,7 +86,6 @@ export async function syncChatMessage({ phoneNumber, senderType, message, handov
     if (!response.ok) {
       const text = await response.text();
       console.error(`[SessionSync] POST ${url} failed (${response.status}): ${text}`);
-    } else {
     }
   } catch (err) {
     console.error(`[SessionSync] ❌ Failed to sync chat message:`, err.message);
@@ -111,7 +109,6 @@ export async function syncHandover({ phoneNumber, handover, reason = null, lastM
     if (!response.ok) {
       const text = await response.text();
       console.error(`[SessionSync] POST ${url} failed (${response.status}): ${text}`);
-    } else {
     }
   } catch (err) {
     console.error(`[SessionSync] ❌ Failed to sync handover status:`, err.message);
@@ -134,7 +131,6 @@ export async function syncAppointment(bookingState) {
     if (!response.ok) {
       const text = await response.text();
       console.error(`[SessionSync] POST ${url} failed (${response.status}): ${text}`);
-    } else {
     }
   } catch (err) {
     console.error(`[SessionSync] ❌ Failed to sync appointment:`, err.message);
