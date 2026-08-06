@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 // Import route routers
 import routes from './routes/index.js';
 import whatsappRoutes from './routes/whatsappRoutes.js';
+import businessRoutes from './routes/businessRoutes.js';
 
 dotenv.config();
 
@@ -49,13 +50,10 @@ app.set('io', io);
 
 // 2. Socket.io Connection Handler
 io.on('connection', (socket) => {
-  console.log(`🔌 Client connected to WebSocket: ${socket.id}`);
-
   // Handler function for joining session rooms
   const handleJoin = (sessionKey) => {
     const room = sessionKey || 'default';
     socket.join(room);
-    console.log(`📱 Socket ${socket.id} joined room: ${room}`);
   };
 
   // Support BOTH event names so frontend never fails to join
@@ -63,7 +61,6 @@ io.on('connection', (socket) => {
   socket.on('join_session', handleJoin);
 
   socket.on('disconnect', (reason) => {
-    console.log(`❌ Client disconnected (${socket.id}): ${reason}`);
   });
 });
 
@@ -75,11 +72,11 @@ app.get('/', (req, res) => {
 // 4. REST API Routes
 app.use('/api', routes);
 app.use('/api/whatsapp', whatsappRoutes);
+app.use('/api/business', businessRoutes);
 
 // Export io for external modules/workers
 export { io };
 
 // 5. Start Server
 httpServer.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });

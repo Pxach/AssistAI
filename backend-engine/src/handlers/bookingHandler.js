@@ -4,20 +4,14 @@ import { strings, getLocaleString } from '../locales/strings.js';
 import { syncAppointment } from '../services/sessionSyncService.js';
 import { minifyState } from '../utils/stateMinifier.js';
 
-// 🚀 DATABASE MOCK FUNCTION (Future-Proofed)
+// 🚀 DYNAMIC CATALOG FETCHER (Phase 2: replace body with real DB query)
+// TODO: Phase 2 — query services and specialists tables seeded by the ingestion pipeline.
+// e.g.:
+//   const services = await db('services').select('*');
+//   const specialists = await db('specialists').select('*');
+//   return { services, specialists };
 async function fetchCompanyCatalogFromDB() {
-  return {
-    services: [
-      { id: 1, name: "Database Optimization", department: "it", duration: 60 },
-      { id: 2, name: "Server Configuration", department: "it", duration: 120 },
-      { id: 3, name: "UI/UX Review", department: "design", duration: 45 }
-    ],
-    specialists: [
-      { id: 101, name: "Sarah", department: "it", services: [1, 2] },
-      { id: 102, name: "Alex", department: "it", services: [1] },
-      { id: 103, name: "Karim", department: "design", services: [3] }
-    ]
-  };
+  return { services: [], specialists: [] };
 }
 
 export async function handleBooking(message, language, bookingState = {}, history = [], senderPhone = "", botPhone = "", ioContext = {}) {
@@ -191,7 +185,6 @@ export async function handleBooking(message, language, bookingState = {}, histor
     // Anchored full-string match: only exact, unambiguous confirmation phrases trigger this guard.
     const isConfirmationText = /^(oui|yes|ok|c'est bon|confirmed|kolchi mzian|oui kolchi mzian|d'accord|parfait|mzian|nhaar)$/i.test(textLower);
     if (isConfirmationText) {
-      console.log("✅ State machine guard: Server-side auto-confirmation detected.");
       currentBookingState.user_confirmed = true;
     }
   }

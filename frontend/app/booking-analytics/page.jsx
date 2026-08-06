@@ -101,6 +101,9 @@ export default function BookingAnalyticsPage() {
             cache: 'no-store'
           }
         );
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
         const result = await response.json();
         if (result.success && isMounted) {
           setStats(result.data.overview || {});
@@ -135,6 +138,9 @@ export default function BookingAnalyticsPage() {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
       });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');

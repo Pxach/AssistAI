@@ -36,7 +36,7 @@ const PROVIDER_REGISTRY = [
     id:           'gemini',
     keyEnvVar:    'GEMINI_API_KEY',
     modelEnvVar:  'GEMINI_MODEL',
-    defaultModel: 'gemini-3.1-flash-lite',
+    defaultModel: 'gemini-3.5-flash-lite',
 
     buildUrl: (model, apiKey) =>
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
@@ -197,9 +197,6 @@ async function callProvider(provider, prompt, options) {
   const url     = provider.buildUrl(provider.model, provider.apiKey);
   const headers = provider.buildHeaders(provider.apiKey);
   const body    = provider.buildBody(prompt, provider.model, options);
-
-  console.log(`[LLM Client] Provider: ${provider.id} | Model: ${provider.model}`);
-
   // ── Network call ────────────────────────────────────────────────────────────
   let response;
   try {
@@ -215,12 +212,12 @@ async function callProvider(provider, prompt, options) {
     const errorBody   = await response.text().catch(() => '(unreadable body)');
     const label       = isRetriable ? 'Retriable' : 'Fatal';
 
-    // If Gemini hits HTTP 429 rate limit, fallback to gemini-1.5-flash-8b before rotating providers
-    if (provider.id === 'gemini' && response.status === 429 && !provider.model.includes('8b')) {
+    // If Gemini hits HTTP 429 rate limit, fallback to gemini-3.1-flash-lite before rotating providers
+    if (provider.id === 'gemini' && response.status === 429 && !provider.model.includes('gemini-3.1-flash-lite')) {
       console.warn(
-        `[LLM Client] ⚠️ Gemini model "${provider.model}" hit HTTP 429 rate limit — attempting fallback model "gemini-1.5-flash-8b"`
+        `[LLM Client] ⚠️ Gemini model "${provider.model}" hit HTTP 429 rate limit — attempting fallback model "gemini-3.1-flash-lite"`
       );
-      const fallbackProvider = { ...provider, model: 'gemini-1.5-flash-8b' };
+      const fallbackProvider = { ...provider, model: 'gemini-3.1-flash-lite' };
       return await callProvider(fallbackProvider, prompt, options);
     }
 

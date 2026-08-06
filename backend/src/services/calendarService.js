@@ -39,8 +39,6 @@ export function generateGoogleCalendarLink({
 }
 
 export async function syncWithSpecialistCalendar(appointmentData, calendarId) {
-  console.log(`[Google Calendar Sync] Event synced to calendar: ${calendarId || 'primary'}`);
-  
   return {
     synced: true,
     calendar_id: calendarId || 'default',

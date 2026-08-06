@@ -41,7 +41,6 @@ export async function patchSessionStatus({
 
     if (!baseUrl) {
       // Dashboard URL not configured yet — silently skip (expected in dev/test)
-      console.log(`[SessionSync] DASHBOARD_API_URL not set. Skipping PATCH for status: ${status}`);
       return;
     }
 
@@ -64,7 +63,6 @@ export async function patchSessionStatus({
       const text = await response.text();
       console.error(`[SessionSync] PATCH ${url} failed (${response.status}): ${text}`);
     } else {
-      console.log(`[SessionSync] ✅ Session status synced → ${status} (session: ${sessionKey})`);
     }
   } catch (err) {
     // Network error, DNS failure, etc. — log but never propagate.
@@ -90,7 +88,6 @@ export async function syncChatMessage({ phoneNumber, senderType, message, handov
       const text = await response.text();
       console.error(`[SessionSync] POST ${url} failed (${response.status}): ${text}`);
     } else {
-      console.log(`[SessionSync] ✅ Chat message synced for ${phoneNumber} (${senderType})`);
     }
   } catch (err) {
     console.error(`[SessionSync] ❌ Failed to sync chat message:`, err.message);
@@ -115,7 +112,6 @@ export async function syncHandover({ phoneNumber, handover, reason = null, lastM
       const text = await response.text();
       console.error(`[SessionSync] POST ${url} failed (${response.status}): ${text}`);
     } else {
-      console.log(`[SessionSync] ✅ Handover status synced for ${phoneNumber} (handover=${handover})`);
     }
   } catch (err) {
     console.error(`[SessionSync] ❌ Failed to sync handover status:`, err.message);
@@ -139,7 +135,6 @@ export async function syncAppointment(bookingState) {
       const text = await response.text();
       console.error(`[SessionSync] POST ${url} failed (${response.status}): ${text}`);
     } else {
-      console.log(`[SessionSync] ✅ Appointment synced successfully for ${bookingState.customer_name}`);
     }
   } catch (err) {
     console.error(`[SessionSync] ❌ Failed to sync appointment:`, err.message);

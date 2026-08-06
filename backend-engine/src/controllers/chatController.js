@@ -98,7 +98,6 @@ export async function processUserMessage(rawInput, language = 'fr', history = []
   if (isActiveBooking) {
     // State machine is committed — no need to ask the LLM what the intent is.
     // Maintain the current language lock; let the booking handler do its work.
-    console.log(`📋 Active booking detected. Skipping intent router — routing directly to booking handler.`);
     aiIntent = 'booking';
     aiDetectedLang = language; // preserve sticky language lock
     aiHandoverReason = "";

@@ -18,6 +18,8 @@ import {
   RefreshCw,
   FileIcon,
   ArrowLeft,
+  Briefcase,
+  Database,
 } from "lucide-react";
 
 // Backend API Base URL
@@ -133,6 +135,8 @@ export default function SettingsPage() {
   });
 
   const [documents, setDocuments] = useState([]);
+  const [services, setServices] = useState([]);
+  const [knowledgeBase, setKnowledgeBase] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [showSecrets, setShowSecrets] = useState({});
   const [isLoading, setIsLoading] = useState(true);
@@ -152,9 +156,11 @@ export default function SettingsPage() {
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
     try {
-      const [configRes, docsRes] = await Promise.all([
+      const [configRes, docsRes, servicesRes, kbRes] = await Promise.all([
         fetch(`${API_BASE_URL}/api/settings/configs`, { headers }),
         fetch(`${API_BASE_URL}/api/settings/documents`, { headers }),
+        fetch(`${API_BASE_URL}/api/business/services`, { headers }),
+        fetch(`${API_BASE_URL}/api/business/knowledge-base`, { headers }),
       ]);
 
       if (configRes.ok) {
@@ -165,6 +171,16 @@ export default function SettingsPage() {
       if (docsRes.ok) {
         const docsData = await docsRes.json();
         setDocuments(docsData.documents || docsData.data || docsData);
+      }
+
+      if (servicesRes.ok) {
+        const servicesData = await servicesRes.json();
+        setServices(servicesData.services || []);
+      }
+
+      if (kbRes.ok) {
+        const kbData = await kbRes.json();
+        setKnowledgeBase(kbData.content ? kbData : null);
       }
     } catch (error) {
       console.error("Error fetching settings data:", error);
@@ -227,18 +243,18 @@ export default function SettingsPage() {
     }
   };
 
-  // 2. POST /api/settings/documents
+  // 2. POST /api/business/upload
   const handleFileUpload = async (e) => {
     e.preventDefault();
     if (!selectedFile) return;
 
     setIsUploading(true);
     const formData = new FormData();
-    formData.append("file", selectedFile);
+    formData.append("document", selectedFile);
 
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE_URL}/api/settings/documents`, {
+      const res = await fetch(`${API_BASE_URL}/api/business/upload`, {
         method: "POST",
         headers: {
           ...(token && { Authorization: `Bearer ${token}` }),
@@ -248,10 +264,34 @@ export default function SettingsPage() {
 
       if (res.ok) {
         const responseData = await res.json();
-        const newDoc = responseData.document || responseData.data || responseData;
+        
+        // Update services and knowledge base from response
+        if (responseData.services) {
+          setServices((prev) => {
+            const newServices = [...prev];
+            responseData.services.forEach(newSvc => {
+              if (!newServices.find(s => s.name === newSvc.name)) {
+                newServices.push(newSvc);
+              }
+            });
+            return newServices;
+          });
+        }
+        if (responseData.knowledge_base) {
+          setKnowledgeBase(responseData.knowledge_base);
+        }
+
+        // Add a pseudo-document to the list to reflect the upload in the UI history
+        const newDoc = {
+          id: Date.now(),
+          file_name: responseData.fileName || selectedFile.name,
+          uploaded_at: new Date().toISOString(),
+          file_size: selectedFile.size
+        };
         setDocuments((prev) => [newDoc, ...prev]);
+        
         setSelectedFile(null);
-        showStatus("success", "Company document uploaded successfully!");
+        showStatus("success", "Company document ingested successfully!");
       } else {
         const err = await res.json();
         showStatus("error", err.error || err.message || "Failed to upload document.");
@@ -541,6 +581,69 @@ export default function SettingsPage() {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* EXTRACTED SERVICES SECTION */}
+          <div className="bg-white rounded-2xl p-6 lg:p-8 border border-purple-100 shadow-sm space-y-6">
+            <div className="flex items-center gap-3 pb-5 border-b border-gray-100">
+              <div className="p-2.5 bg-[#F0EDFF] rounded-xl text-[#7C5CFC]">
+                <Briefcase className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Extracted Services</h2>
+                <p className="text-xs text-gray-500">
+                  Services detected from your ingested documents.
+                </p>
+              </div>
+            </div>
+
+            {services.length === 0 ? (
+              <div className="text-center py-8 text-gray-400 bg-gray-50 rounded-xl text-xs">
+                No services extracted yet. Upload a document to populate this.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                {services.map((svc, idx) => (
+                  <div key={svc.id || idx} className="p-4 bg-gray-50 border border-gray-100 rounded-xl space-y-1">
+                    <h4 className="font-semibold text-gray-900 text-sm">{svc.name}</h4>
+                    <p className="text-xs text-gray-500 capitalize">Dept: {svc.department}</p>
+                    <p className="text-xs text-gray-500">Duration: {svc.duration_minutes} min</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* EXTRACTED KNOWLEDGE BASE SECTION */}
+          <div className="bg-white rounded-2xl p-6 lg:p-8 border border-purple-100 shadow-sm space-y-6">
+            <div className="flex items-center gap-3 pb-5 border-b border-gray-100">
+              <div className="p-2.5 bg-[#F0EDFF] rounded-xl text-[#7C5CFC]">
+                <Database className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Active Knowledge Base</h2>
+                <p className="text-xs text-gray-500">
+                  The latest company information powering your AI responses.
+                </p>
+              </div>
+            </div>
+
+            {!knowledgeBase || !knowledgeBase.content ? (
+              <div className="text-center py-8 text-gray-400 bg-gray-50 rounded-xl text-xs">
+                No knowledge base content available. Upload a document first.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="text-xs text-gray-500">
+                  <span className="font-semibold text-gray-700">Source File:</span> {knowledgeBase.source_file || "Unknown"}
+                  <span className="mx-2">•</span>
+                  <span className="font-semibold text-gray-700">Updated:</span> {knowledgeBase.updated_at ? new Date(knowledgeBase.updated_at).toLocaleString() : "Recently"}
+                </div>
+                <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 whitespace-pre-wrap font-mono">
+                  {knowledgeBase.content}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

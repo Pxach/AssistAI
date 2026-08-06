@@ -105,6 +105,9 @@ export default function ChatAnalyticsPage() {
             cache: 'no-store'
           }
         );
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
         const result = await response.json();
         if (result.success && isMounted) {
           setStats(result.data.overview || {});
@@ -144,6 +147,9 @@ export default function ChatAnalyticsPage() {
           }
         }
       );
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');

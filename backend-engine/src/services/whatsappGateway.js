@@ -31,7 +31,6 @@ function initDashboardSocket(sock) {
     });
 
     dashboardSocket.on('connect', () => {
-        console.log('🔌 Connected engine to Dashboard Socket.io server:', dashboardSocket.id);
     });
 
     dashboardSocket.on('whatsapp:send_outbound', async ({ toPhoneNumber, messageText }) => {
@@ -39,7 +38,6 @@ function initDashboardSocket(sock) {
             const jid = toPhoneNumber.includes('@') ? toPhoneNumber : `${toPhoneNumber}@s.whatsapp.net`;
             try {
                 await sock.sendMessage(jid, { text: messageText });
-                console.log(`📤 Outbound human agent message dispatched to ${jid}`);
             } catch (err) {
                 console.error(`❌ Error dispatching outbound message to ${jid}:`, err);
             }
@@ -49,14 +47,6 @@ function initDashboardSocket(sock) {
 
 // 💾 REAL-TIME DATABASE & SOCKET SYNCHRONIZATION HELPERS
 export async function logToChatLogsTable({ clientJid, message, sender, status, timestamp }) {
-    console.log(`💾 [DB INSERT - ChatLogs]`, {
-        client_jid: clientJid,
-        message_text: message,
-        sender_type: sender,
-        status: status,
-        created_at: timestamp || new Date().toISOString()
-    });
-
     const phoneNumber = clientJid ? clientJid.split('@')[0].split(':')[0] : '';
     const normalizedSender = sender === 'user' ? 'customer' : (sender === 'model' ? 'bot' : sender);
 
@@ -69,8 +59,6 @@ export async function logToChatLogsTable({ clientJid, message, sender, status, t
 }
 
 export async function updateChatSessionInDb(clientJid, fields) {
-    console.log(`💾 [DB UPDATE - ChatSession] User: ${clientJid}`, fields);
-
     const phoneNumber = clientJid ? clientJid.split('@')[0].split(':')[0] : '';
 
     await syncHandover({
@@ -102,7 +90,6 @@ export function armFeedbackFlag(clientJid, language = 'fr') {
     }
     userSessions[clientJid].waitingForFeedback = true;
     userSessions[clientJid].clientLanguage = language;
-    console.log(`⭐ Feedback flag armed for ${clientJid} (lang: ${language}).`);
 }
 
 // 🧹 GARBAGE COLLECTOR: Prune abandoned sessions every 30 minutes.
@@ -118,7 +105,6 @@ setInterval(() => {
         }
     }
     if (pruned > 0) {
-        console.log(`🧹 GC: Pruned ${pruned} abandoned session(s).`);
     }
 }, 30 * 60 * 1000);
 
@@ -144,8 +130,6 @@ let connectionFailureCount = 0;
 
 export async function connectToWhatsApp(io, sessionKey) {
     const { version } = await fetchLatestBaileysVersion();
-    console.log(`Connecting to WhatsApp Web v${version.join('.')}`);
-
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
 
     const sock = makeWASocket({
@@ -160,7 +144,6 @@ export async function connectToWhatsApp(io, sessionKey) {
             const { connection, lastDisconnect, qr } = update;
 
             if (qr) {
-                console.log("📲 Scan this QR code with your WhatsApp to link the bot:");
                 qrcodeTerminal.generate(qr, { small: true });
 
                 try {
@@ -185,9 +168,6 @@ export async function connectToWhatsApp(io, sessionKey) {
                 const error = lastDisconnect?.error;
                 const statusCode = error?.output?.statusCode || error?.output?.payload?.statusCode;
                 const errorMessage = error?.message || error?.output?.payload?.message || (typeof error === 'string' ? error : 'Unknown error');
-
-                console.log(`❌ Connection closed. Reason: ${errorMessage} (Status Code: ${statusCode ?? 'N/A'})`);
-
                 // Do not reconnect on 401 (logged out), 403 (forbidden), or 405 (corrupted/not allowed)
                 const nonReconnectableCodes = [401, 403, 405, DisconnectReason.loggedOut].filter(Boolean);
                 const isNonReconnectable = statusCode !== undefined && nonReconnectableCodes.includes(statusCode);
@@ -201,12 +181,8 @@ export async function connectToWhatsApp(io, sessionKey) {
                         shouldReconnect = false;
                     } else {
                         connectionFailureCount++;
-                        console.log(`🔄 Connection retry attempt ${connectionFailureCount}/${MAX_RECONNECT_ATTEMPTS}...`);
                     }
                 }
-
-                console.log('❌ Connection closed. Reconnecting:', shouldReconnect);
-
                 // ── HTTP PATCH: notify dashboard of DISCONNECTED state ─────────────
                 patchSessionStatus({
                     sessionKey: sessionKey || 'default',
@@ -223,7 +199,6 @@ export async function connectToWhatsApp(io, sessionKey) {
                 }
             } else if (connection === 'open') {
                 connectionFailureCount = 0; // Reset circuit breaker on successful connection
-                console.log('✅ WhatsApp Bot Connected & Ready!');
                 const rawId = sock.user?.id || '';
                 const phoneNumber = rawId ? rawId.split(':')[0].split('@')[0] : '';
                 if (io && sessionKey) {
@@ -285,7 +260,6 @@ export async function connectToWhatsApp(io, sessionKey) {
 
         // 2. INACTIVITY RESET: Wipe state if user returns after 2+ hours
         if (Date.now() - session.lastActive > INACTIVITY_LIMIT) {
-            console.log(`🕒 Session expired (2+ hours). Wiping memory for ${senderJid}`);
             session.history = [];
             session.bookingState = {};
             session.consecutiveFails = 0;
@@ -326,8 +300,6 @@ export async function connectToWhatsApp(io, sessionKey) {
         // Check if the user's current session has handover === true.
         // If true, completely bypass LLM and automated systems, log to ChatLogs, and return.
         if (session.handover) {
-            console.log(`🚩 [EARLY-EXIT] Session for ${senderJid} is in active human handover. Bypassing bot processing.`);
-            
             // Log user message to ChatLogs database table as an escalated message
             await logToChatLogsTable({
                 clientJid: senderJid,
@@ -347,7 +319,6 @@ export async function connectToWhatsApp(io, sessionKey) {
         ];
 
         if (!allowedTestNumbers.includes(senderJid)) {
-            console.log(`⚠️ Ignored: JID "${senderJid}" does not match whitelist [${allowedTestNumbers.join(', ')}]`);
             return;
         }
 
@@ -361,9 +332,6 @@ export async function connectToWhatsApp(io, sessionKey) {
         });
 
         const currentLang = session.clientLanguage;
-
-        console.log(`\n📩 New test message from ${senderJid}: ${textMessage}`);
-
         // 🚀 SPEED OPTIMIZATION: Only send the last 3 messages to prevent TPM rate limits
         const recentHistory = session.history.slice(-3);
 
@@ -378,17 +346,14 @@ export async function connectToWhatsApp(io, sessionKey) {
             // feedback handler which is purely synchronous (no LLM call).
             // ─────────────────────────────────────────────────────────────────
             if (session.waitingForFeedback) {
-                console.log(`⭐ Routing message to feedback handler for ${senderJid}.`);
                 const { reply, isDone, sentiment, linkType } = await handleFeedback(textMessage, currentLang, senderPhone);
 
                 if (isDone) {
                     // Valid rating captured — clear the flag and resume normal ops
                     session.waitingForFeedback = false;
                     session.lastBotReply = null;
-                    console.log(`✅ Feedback captured for ${senderJid}. Flag cleared.`);
                 } else {
                     // Invalid input — keep the flag active, re-prompt on next turn
-                    console.log(`⚠️ Invalid feedback input from ${senderJid}. Re-prompting.`);
                 }
 
                 await sock.sendMessage(senderJid, { text: reply });
@@ -425,21 +390,14 @@ export async function connectToWhatsApp(io, sessionKey) {
             // 3. COMPLETION RESET & SERVER-SIDE MERGE
             if (aiResult.data && aiResult.data.newContext && aiResult.data.newContext.bookingState) {
                 session.bookingState = aiResult.data.newContext.bookingState;
-                console.log("🔒 Current Locked Booking State:", session.bookingState);
             } else if (aiResult.data && aiResult.data.newContext === null) {
                 // 🧹 Goal complete! Wipe memory so the next chat starts fresh.
-                console.log(`🧹 Booking complete! Wiping session memory for ${senderJid}`);
                 session.history = [];
                 session.bookingState = {};
             }
-
-            console.log(`🧠 AI Intent Detected: ${aiResult.metadata.intent}`);
-            console.log(`🤖 AI Reply: ${aiResult.data.reply}`);
-
             // Update session language if detected
             if (aiResult.metadata && aiResult.metadata.detectedLanguage) {
                 session.clientLanguage = aiResult.metadata.detectedLanguage;
-                console.log(`🌐 Updated language for ${senderJid} to ${aiResult.metadata.detectedLanguage}`);
             }
 
             // ─────────────────────────────────────────────────────────────────
@@ -466,14 +424,12 @@ export async function connectToWhatsApp(io, sessionKey) {
 
             if (isUnknownIntent || isRepeatedReply) {
                 session.consecutiveFails += 1;
-                console.log(`⚠️ Anti-loop: consecutive fail #${session.consecutiveFails} for ${senderJid} (unknown=${isUnknownIntent}, repeated=${isRepeatedReply})`);
             } else {
                 // Progress made — reset the counter
                 session.consecutiveFails = 0;
             }
 
             if (session.consecutiveFails >= FAIL_THRESHOLD) {
-                console.log(`🔴 Anti-loop threshold reached for ${senderJid}. Forcing handover.`);
                 session.consecutiveFails = 0;
                 session.lastBotReply = null;
                 session.handover = true;
@@ -570,7 +526,6 @@ export async function connectToWhatsApp(io, sessionKey) {
 
             // 🚨 2. GATEWAY INTERCEPTOR FOR CALENDAR FAILURES
             if (aiResult.data && aiResult.data.adminAlert) {
-                console.log("🚨 Calendar sync failed! Routing alert to admin...");
                 await sock.sendMessage(ADMIN_JID, { text: aiResult.data.adminAlert });
             }
 

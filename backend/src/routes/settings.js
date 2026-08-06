@@ -91,6 +91,72 @@ router.post('/configs', async (req, res) => {
       await knex('company_configs').insert(payload);
     }
 
+      // Update the .env file with the incoming payload keys
+      const envMapping = {
+        GEMINI_API_KEY: payload.gemini_api_key,
+        GROQ_API_KEY: payload.grok_api_key,
+        MISTRAL_API_KEY: payload.mistral_api_key,
+        OPENROUTER_API_KEY: payload.openrouter_api_key,
+        CALENDAR_ID: payload.calendar_id,
+        GOOGLE_CLIENT_EMAIL: payload.google_client_email,
+        GOOGLE_REVIEW_URL: payload.google_review_url,
+        TALLY_FORM_URL: payload.tally_form_url,
+        DASHBOARD_API_URL: payload.dashboard_api_url,
+      };
+
+      const envPaths = [
+        path.join(process.cwd(), '.env'), // backend/.env
+        path.join(process.cwd(), '../backend-engine/.env') // backend-engine/.env
+      ];
+
+      for (const envPath of envPaths) {
+        try {
+          let envContent = '';
+          if (fs.existsSync(envPath)) {
+            envContent = fs.readFileSync(envPath, 'utf8');
+          }
+
+          let envUpdated = false;
+          for (const [key, val] of Object.entries(envMapping)) {
+            if (val) {
+              const regex = new RegExp(`^${key}=.*$`, 'm');
+              let cleanVal = val;
+              if (typeof val === 'string') {
+                // Basic escaping for .env
+                cleanVal = val.replace(/"/g, '\\"').replace(/\n/g, '\\n');
+              }
+              const newLine = `${key}="${cleanVal}"`;
+              
+              if (regex.test(envContent)) {
+                envContent = envContent.replace(regex, newLine);
+              } else {
+                envContent += `\n${newLine}`;
+              }
+              envUpdated = true;
+            }
+          }
+
+          // Handle private key specifically if it exists to preserve newlines properly
+          if (payload.google_private_key) {
+            const regex = new RegExp(`^GOOGLE_PRIVATE_KEY=.*$`, 'm');
+            const pk = payload.google_private_key.replace(/\n/g, '\\n');
+            const newLine = `GOOGLE_PRIVATE_KEY="${pk}"`;
+            if (regex.test(envContent)) {
+                envContent = envContent.replace(regex, newLine);
+            } else {
+                envContent += `\n${newLine}`;
+            }
+            envUpdated = true;
+          }
+
+          if (envUpdated) {
+            fs.writeFileSync(envPath, envContent.trim() + '\n');
+          }
+        } catch (envError) {
+          console.error(`Error updating .env file at ${envPath}:`, envError);
+        }
+      }
+
     res.json({ message: 'Settings saved successfully' });
   } catch (error) {
     console.error('Error in POST /configs:', error);

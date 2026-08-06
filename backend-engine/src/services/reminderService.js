@@ -61,8 +61,6 @@ function buildReminderMessage(appt) {
  * @param {import('@whiskeysockets/baileys').WASocket} sock — Live Baileys socket
  */
 export async function sendDailyReminders(sock) {
-  console.log('⏰ Reminder service: checking for tomorrow\'s appointments...');
-
   let appointments;
   try {
     appointments = await fetchAppointmentsTomorrow();
@@ -72,17 +70,12 @@ export async function sendDailyReminders(sock) {
   }
 
   if (!appointments || appointments.length === 0) {
-    console.log('✅ Reminder service: no appointments tomorrow. Nothing to send.');
     return;
   }
-
-  console.log(`📋 Reminder service: found ${appointments.length} appointment(s) to remind.`);
-
   for (const appt of appointments) {
     try {
       const message = buildReminderMessage(appt);
       await sock.sendMessage(appt.clientJid, { text: message });
-      console.log(`✅ Reminder sent to ${appt.clientJid} (${appt.clientName}).`);
     } catch (err) {
       // A single send failure must not abort the rest of the loop
       console.error(`❌ Failed to send reminder to ${appt.clientJid}:`, err.message);
@@ -96,8 +89,6 @@ export async function sendDailyReminders(sock) {
  * @param {import('@whiskeysockets/baileys').WASocket} sock
  */
 export async function sendFeedbackRequests(sock) {
-  console.log('⭐ Feedback service: checking for today\'s concluded appointments...');
-
   let appointments;
   try {
     appointments = await fetchAppointmentsEndedToday();
@@ -107,19 +98,14 @@ export async function sendFeedbackRequests(sock) {
   }
 
   if (!appointments || appointments.length === 0) {
-    console.log('✅ Feedback service: no concluded appointments today. Nothing to send.');
     return;
   }
-
-  console.log(`📋 Feedback service: found ${appointments.length} concluded appointment(s).`);
-
   for (const appt of appointments) {
     try {
       // Check eligibility before sending
       const phoneNumber = appt.clientJid ? appt.clientJid.split('@')[0] : '';
       const isEligible = await checkFeedbackEligibility(phoneNumber);
       if (!isEligible) {
-        console.log(`⚠️ Client ${appt.clientJid} is not eligible for feedback. Skipping.`);
         continue;
       }
 
@@ -131,8 +117,6 @@ export async function sendFeedbackRequests(sock) {
       // 2. Send the rating prompt
       const message = getLocaleString(strings.reminder.feedbackPrompt, appt.language, appt);
       await sock.sendMessage(appt.clientJid, { text: message });
-
-      console.log(`✅ Feedback prompt sent to ${appt.clientJid} (${appt.clientName}).`);
     } catch (err) {
       // A single failure must not abort the rest of the loop
       console.error(`❌ Failed to send feedback prompt to ${appt.clientJid}:`, err.message);
@@ -153,13 +137,10 @@ export function initReminderScheduler(sock) {
   // Cron format: second(opt) minute hour day month weekday
   // '0 8 * * *' → at 08:00:00 every day
   const job = cron.schedule('0 8 * * *', async () => {
-    console.log('\n📅 [CRON] Daily reminder job triggered.');
     await sendDailyReminders(sock);
   }, {
     timezone: 'Africa/Casablanca'
   });
-
-  console.log('📅 Reminder scheduler initialized. Reminders fire daily at 08:00 AM (Casablanca).');
   return job; // returned so caller can call job.stop() for graceful shutdown
 }
 
@@ -172,12 +153,9 @@ export function initReminderScheduler(sock) {
 export function initFeedbackScheduler(sock) {
   // '0 20 * * *' → at 20:00:00 every day
   const job = cron.schedule('0 20 * * *', async () => {
-    console.log('\n⭐ [CRON] Daily feedback job triggered.');
     await sendFeedbackRequests(sock);
   }, {
     timezone: 'Africa/Casablanca'
   });
-
-  console.log('⭐ Feedback scheduler initialized. Feedback prompts fire daily at 20:00 (Casablanca).');
   return job; // returned so caller can call job.stop() for graceful shutdown
 }

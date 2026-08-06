@@ -1,111 +1,54 @@
-import { services, specialists, specialistServices } from '../data/mockBookingData.js';
-import { generateGoogleCalendarLink } from './calendarService.js';
+// src/services/bookingHandler.js
+//
+// Dashboard-side booking helper.
+//
+// ─── Phase 2 Note ─────────────────────────────────────────────────────────────
+// The previous implementation matched against a hardcoded mock catalog imported
+// from `data/mockBookingData.js` (now deleted). That file has been removed as
+// part of the Phase 1 mock data cleanup.
+//
+// The real services/specialists catalog will be seeded from the document
+// ingestion pipeline (POST /api/business/upload) in Phase 2. At that point,
+// processBookingRequest should query the DB tables instead.
+// ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * processBookingRequest
+ *
+ * Accepts a raw booking input object and returns a normalised booking record
+ * ready for DB insertion via appointmentController.
+ *
+ * TODO (Phase 2): replace this stub with real catalog DB lookups:
+ *   const matchedService = await db('services').where({ name: input.service_name }).first();
+ *   const matchedSpecialist = await db('specialists').where({ name: input.specialist_name }).first();
+ *
+ * @param {object} input - Raw booking fields from the request body.
+ * @returns {object}     - Normalised booking result object.
+ */
 export function processBookingRequest(input) {
-  const { customer_name, contact_info, service_name, specialist_name, appointment_date, appointment_time } = input;
+  const {
+    customer_name,
+    contact_info,
+    service_name,
+    specialist_name,
+    appointment_date,
+    appointment_time,
+  } = input;
 
-  const matchedService = service_name
-    ? services.find(s => s.name.toLowerCase() === service_name.toLowerCase())
-    : null;
-
-  const matchedSpecialist = specialist_name
-    ? specialists.find(sp => sp.name.toLowerCase() === specialist_name.toLowerCase())
-    : null;
-
-  // 1. Both Specialist & Service
-  if (matchedService && matchedSpecialist) {
-    const isValidPair = specialistServices.some(
-      ss => ss.specialist_id === matchedSpecialist.id && ss.service_id === matchedService.id
-    );
-    if (isValidPair) {
-      return formatBookingOutput({
-        customer_name,
-        contact_info,
-        department: matchedService.department,
-        specialist_id: matchedSpecialist.id,
-        specialist_name: matchedSpecialist.name,
-        service_id: matchedService.id,
-        service_requested: matchedService.name,
-        appointment_date,
-        appointment_time,
-        duration_minutes: matchedService.duration_minutes
-      });
-    }
-
-    const qualifiedSpecialistIds = specialistServices
-      .filter(ss => ss.service_id === matchedService.id)
-      .map(ss => ss.specialist_id);
-
-    const alternativeSpecialists = specialists.filter(sp => qualifiedSpecialistIds.includes(sp.id));
-
-    return {
-      status: 'fallback',
-      message: `${matchedSpecialist.name} does not perform ${matchedService.name}.`,
-      suggestions: alternativeSpecialists.map(sp => sp.name)
-    };
-  }
-
-  // 2. Specialist Only
-  if (matchedSpecialist && !matchedService) {
-    const offeredServiceIds = specialistServices
-      .filter(ss => ss.specialist_id === matchedSpecialist.id)
-      .map(ss => ss.service_id);
-
-    const offeredServices = services.filter(s => offeredServiceIds.includes(s.id));
-
-    return {
-      status: 'clarification_needed',
-      message: `Please select a service offered by ${matchedSpecialist.name}:`,
-      available_services: offeredServices.map(s => s.name)
-    };
-  }
-
-  // 3. Service Only
-  if (matchedService && !matchedSpecialist) {
-    const qualifiedSpecialistIds = specialistServices
-      .filter(ss => ss.service_id === matchedService.id)
-      .map(ss => ss.specialist_id);
-
-    const qualifiedSpecialists = specialists.filter(sp => qualifiedSpecialistIds.includes(sp.id));
-
-    return formatBookingOutput({
-      customer_name,
-      contact_info,
-      department: matchedService.department,
-      specialist_id: null,
-      specialist_name: null,
-      service_id: matchedService.id,
-      service_requested: matchedService.name,
-      appointment_date,
-      appointment_time,
-      duration_minutes: matchedService.duration_minutes,
-      available_specialists: qualifiedSpecialists.map(sp => sp.name)
-    });
-  }
-
+  // Phase 2: catalog matching will be implemented once the DB is seeded
+  // via the /api/business/upload ingestion pipeline.
   return {
-    status: 'error',
-    message: 'Could not resolve a valid service or specialist from the request.'
-  };
-}
-
-function formatBookingOutput(data) {
-  const calendarLink = generateGoogleCalendarLink(data);
-
-  return {
-    customer_name: data.customer_name || 'Pending',
-    contact_info: data.contact_info || 'Pending',
-    department: data.department || 'general',
-    specialist_id: data.specialist_id || null,
-    specialist_name: data.specialist_name || null,
-    service_id: data.service_id || null,
-    service_requested: data.service_requested,
-    appointment_date: data.appointment_date || null,
-    appointment_time: data.appointment_time || null,
-    duration_minutes: data.duration_minutes || 60,
+    customer_name: customer_name || 'Pending',
+    contact_info: contact_info || 'Pending',
+    department: 'general',
+    specialist_id: null,
+    specialist_name: specialist_name || null,
+    service_id: null,
+    service_requested: service_name || null,
+    appointment_date: appointment_date || null,
+    appointment_time: appointment_time || null,
+    duration_minutes: 60,
     status: 'pending',
     review_prompt_sent: false,
-    google_calendar_link: calendarLink,
-    ...(data.available_specialists && { available_specialists: data.available_specialists })
   };
-}
+}

@@ -33,6 +33,9 @@ export default function ConnectDevicePage() {
   const refreshStatus = async () => {
     try {
       const res = await fetch(`${API_BASE}/api/whatsapp/status?sessionKey=${SESSION_KEY}`);
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
       const result = await res.json();
 
       if (result.success) {
@@ -56,6 +59,9 @@ export default function ConnectDevicePage() {
     async function loadInitialStatus() {
       try {
         const res = await fetch(`${API_BASE}/api/whatsapp/status?sessionKey=${SESSION_KEY}`);
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
         const result = await res.json();
 
         if (isMounted && result.success) {
@@ -90,13 +96,11 @@ export default function ConnectDevicePage() {
     socketRef.current = socket;
 
     socket.on('connect', () => {
-      console.log('✅ Connected to backend WebSocket:', socket.id);
       // Emits join_session to match backend
       socket.emit('join_session', SESSION_KEY);
     });
 
     socket.on('whatsapp:status_change', (data) => {
-      console.log('Received status_change event:', data);
       if (data.status) setStatus(data.status);
       if (data.phoneNumber !== undefined) setPhoneNumber(data.phoneNumber);
       if (data.connectedAt) setConnectedAt(data.connectedAt);
@@ -109,7 +113,6 @@ export default function ConnectDevicePage() {
     });
 
     socket.on('whatsapp:qr', (data) => {
-      console.log('Received QR Code event!');
       if (data.qrCode) {
         setQrCode(data.qrCode);
         setStatus('PAIRING');
@@ -141,6 +144,9 @@ export default function ConnectDevicePage() {
         body: JSON.stringify({ sessionKey: SESSION_KEY }),
       });
 
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
       const data = await res.json();
       if (data.success) {
         setStatus('PAIRING');
@@ -162,6 +168,9 @@ export default function ConnectDevicePage() {
         body: JSON.stringify({ sessionKey: SESSION_KEY }),
       });
 
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
       const data = await res.json();
       if (data.success) {
         setStatus('DISCONNECTED');

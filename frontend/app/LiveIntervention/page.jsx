@@ -48,6 +48,9 @@ export default function LiveInterventionHub() {
         `${API_BASE}/api/whatsapp/logs/${encodeURIComponent(phoneNumber)}`,
         { signal: controller.signal }
       );
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
       const data = await res.json();
       if (data.success) {
         setMessages(data.data);
@@ -65,6 +68,7 @@ export default function LiveInterventionHub() {
   const refreshSessions = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/whatsapp/sessions`);
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       const data = await res.json();
       if (data.success) {
         setSessions(data.data);
@@ -79,6 +83,7 @@ export default function LiveInterventionHub() {
     const initData = async () => {
       try {
         const res = await fetch(`${API_BASE}/api/whatsapp/sessions`);
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
         const data = await res.json();
         if (data.success && data.data.length > 0) {
           setSessions(data.data);
@@ -102,7 +107,6 @@ export default function LiveInterventionHub() {
     socketRef.current = socket;
 
     socket.on('connect', () => {
-      console.log('✅ Connected LiveIntervention socket:', socket.id);
     });
 
     socket.on('whatsapp:new_message', (newMsg) => {
@@ -169,6 +173,7 @@ export default function LiveInterventionHub() {
         }),
       });
 
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       const data = await res.json();
       if (data.success || res.ok) {
         // Sync local selected session and array simultaneously
@@ -206,6 +211,7 @@ export default function LiveInterventionHub() {
         }),
       });
 
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       const data = await res.json();
       if (data.success) {
         setMessages((prev) => [...prev, data.data]);

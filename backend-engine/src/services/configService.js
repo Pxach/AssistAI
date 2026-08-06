@@ -25,22 +25,33 @@ export async function getConfig(key) {
 
 /**
  * Returns the company knowledge base text used to ground AI responses.
- * Future: replace with a DB query that retrieves parsed PDF/document text, e.g.:
- *   const row = await db.query('SELECT content FROM knowledge_base WHERE active = true LIMIT 1');
- *   return row.rows[0]?.content ?? '';
+ *
+ * Fetches the most recent content from the backend's knowledge_base table
+ * via the dashboard API (POST /api/business/upload populates it).
+ *
+ * Falls back to an empty string if the backend is unreachable or the table
+ * is empty — the bot stays operational, it just won't have company context.
  *
  * @returns {Promise<string>}
  */
 export async function getKnowledgeBase() {
-  // TODO: swap with DB/storage call when PDF ingestion pipeline is ready.
-  return [
-    'Mock company info:',
-    '- Business name: Expleo Company',
-    '- Services offered: Database Optimization, Server Configuration, UI/UX Review.',
-    '- Business hours: Monday to Friday, 09:00 to 17:00 (Casablanca time).',
-    '- Location: Casablanca, Morocco.',
-    '- Contact email: support@expleo.com',
-    '- Booking policy: Appointments must be made at least 24 hours in advance.',
-    '- Cancellation policy: Notify us at least 12 hours before the appointment.',
-  ].join('\n');
+  try {
+    const baseUrl = (await getConfig('DASHBOARD_API_URL')) || 'http://localhost:5000';
+    const response = await fetch(`${baseUrl}/api/business/knowledge-base`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    if (!response.ok) {
+      console.warn(`[ConfigService] knowledge-base fetch returned ${response.status} — using empty context.`);
+      return '';
+    }
+
+    const data = await response.json();
+    return data.content || '';
+  } catch (err) {
+    // Network error or backend not yet running — degrade gracefully.
+    console.warn(`[ConfigService] Could not fetch knowledge base: ${err.message} — using empty context.`);
+    return '';
+  }
 }

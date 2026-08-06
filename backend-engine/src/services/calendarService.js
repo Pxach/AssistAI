@@ -102,9 +102,6 @@ export async function insertEvent(bookingState, { io, sessionKey } = {}) {
       calendarId,
       resource: event,
     });
-
-    console.log('✅ Calendar Event Created:', response.data.htmlLink);
-
     // 5. Emit bot:booking_created to the dashboard in real time
     if (io && sessionKey) {
       // Resolve catalog IDs for the structured event payload
@@ -125,8 +122,6 @@ export async function insertEvent(bookingState, { io, sessionKey } = {}) {
           : bookingState.appointment_time,
         timestamp: new Date().toISOString(),
       });
-
-      console.log('📡 [Socket.io] bot:booking_created emitted for', bookingState.customer_name);
     }
 
     return response.data.htmlLink;
