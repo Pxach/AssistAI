@@ -199,6 +199,7 @@ export async function connectToWhatsApp(io, sessionKey) {
                     connectToWhatsApp(io, sessionKey);
                 }
             } else if (connection === 'open') {
+                console.log('✅ WhatsApp Gateway Connected!');
                 connectionFailureCount = 0; // Reset circuit breaker on successful connection
                 const rawId = sock.user?.id || '';
                 const phoneNumber = rawId ? rawId.split(':')[0].split('@')[0] : '';
