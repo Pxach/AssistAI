@@ -145,6 +145,29 @@ router.post('/documents', upload.single('file'), async (req, res) => {
     const companyId = getCompanyId(req);
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
+    // If uploading company_information.json, overwrite/remove existing saved document first
+    if (req.file.originalname === 'company_information.json') {
+      try {
+        let existingQuery = knex('company_documents').where({ file_name: 'company_information.json' });
+        if (companyId !== null) {
+          existingQuery = existingQuery.andWhere({ company_id: companyId });
+        }
+        const existingDocs = await existingQuery;
+        for (const oldDoc of existingDocs) {
+          if (oldDoc.file_url) {
+            const oldFilename = path.basename(oldDoc.file_url);
+            const oldFullPath = path.join(uploadDir, oldFilename);
+            if (fs.existsSync(oldFullPath)) {
+              try { fs.unlinkSync(oldFullPath); } catch (_) {}
+            }
+          }
+          await knex('company_documents').where({ id: oldDoc.id }).delete();
+        }
+      } catch (cleanErr) {
+        console.warn('Warning cleaning up old company_information.json:', cleanErr.message);
+      }
+    }
+
     const newDocData = {
       company_id: companyId,
       file_name: req.file.originalname,

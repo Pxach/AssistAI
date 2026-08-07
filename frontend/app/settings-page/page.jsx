@@ -18,6 +18,14 @@ import {
   RefreshCw,
   FileIcon,
   ArrowLeft,
+  Building2,
+  Mail,
+  Clock,
+  Briefcase,
+  MapPin,
+  UserCheck,
+  Plus,
+  FileJson,
 } from "lucide-react";
 
 // Backend API Base URL
@@ -132,11 +140,27 @@ export default function SettingsPage() {
     dashboard_api_url: "",
   });
 
+  // Company Profile Knowledge Base Form State
+  const [companyProfile, setCompanyProfile] = useState({
+    companyName: "",
+    companyEmail: "",
+    description: "",
+    openingHours: "09:00 AM",
+    closingHours: "06:00 PM",
+    servicesOffered: "",
+    yearOfCreation: "",
+    locations: [{ id: 1, address: "", city: "" }],
+    professionals: [
+      { id: 1, fullName: "", servicesProvided: "", workingHours: "" },
+    ],
+  });
+
   const [documents, setDocuments] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
   const [showSecrets, setShowSecrets] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [statusMessage, setStatusMessage] = useState(null);
@@ -151,6 +175,16 @@ export default function SettingsPage() {
     const token = localStorage.getItem("token");
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
+    // Load saved company profile from localStorage if present
+    const savedProfile = localStorage.getItem("company_profile_data");
+    if (savedProfile) {
+      try {
+        setCompanyProfile(JSON.parse(savedProfile));
+      } catch (e) {
+        console.error("Error loading saved company profile from storage:", e);
+      }
+    }
+
     try {
       const [configRes, docsRes] = await Promise.all([
         fetch(`${API_BASE_URL}/api/settings/configs`, { headers }),
@@ -164,7 +198,30 @@ export default function SettingsPage() {
 
       if (docsRes.ok) {
         const docsData = await docsRes.json();
-        setDocuments(docsData.documents || docsData.data || docsData);
+        const docList = docsData.documents || docsData.data || docsData;
+        setDocuments(docList);
+
+        // If local storage didn't have data, try loading existing JSON document from server
+        if (!savedProfile && Array.isArray(docList)) {
+          const profileDoc = docList.find(
+            (d) => (d.file_name || d.original_name || d.name) === "company_information.json"
+          );
+          if (profileDoc) {
+            try {
+              const url = profileDoc.file_url.startsWith("http")
+                ? profileDoc.file_url
+                : `${API_BASE_URL}${profileDoc.file_url}`;
+              const jsonRes = await fetch(url);
+              if (jsonRes.ok) {
+                const parsedProfile = await jsonRes.json();
+                setCompanyProfile(parsedProfile);
+                localStorage.setItem("company_profile_data", JSON.stringify(parsedProfile));
+              }
+            } catch (pErr) {
+              console.warn("Could not fetch remote company_information.json:", pErr);
+            }
+          }
+        }
       }
     } catch (error) {
       console.error("Error fetching settings data:", error);
@@ -197,6 +254,114 @@ export default function SettingsPage() {
 
   const toggleSecretVisibility = (key) => {
     setShowSecrets((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  // Dynamic Location Handlers
+  const handleAddLocation = () => {
+    setCompanyProfile((prev) => ({
+      ...prev,
+      locations: [
+        ...prev.locations,
+        { id: Date.now(), address: "", city: "" },
+      ],
+    }));
+  };
+
+  const handleRemoveLocation = (id) => {
+    if (companyProfile.locations.length <= 1) return;
+    setCompanyProfile((prev) => ({
+      ...prev,
+      locations: prev.locations.filter((loc) => loc.id !== id),
+    }));
+  };
+
+  const handleLocationChange = (id, field, value) => {
+    setCompanyProfile((prev) => ({
+      ...prev,
+      locations: prev.locations.map((loc) =>
+        loc.id === id ? { ...loc, [field]: value } : loc
+      ),
+    }));
+  };
+
+  // Dynamic Professional Handlers
+  const handleAddProfessional = () => {
+    setCompanyProfile((prev) => ({
+      ...prev,
+      professionals: [
+        ...prev.professionals,
+        { id: Date.now(), fullName: "", servicesProvided: "", workingHours: "" },
+      ],
+    }));
+  };
+
+  const handleRemoveProfessional = (id) => {
+    if (companyProfile.professionals.length <= 1) return;
+    setCompanyProfile((prev) => ({
+      ...prev,
+      professionals: prev.professionals.filter((pro) => pro.id !== id),
+    }));
+  };
+
+  const handleProfessionalChange = (id, field, value) => {
+    setCompanyProfile((prev) => ({
+      ...prev,
+      professionals: prev.professionals.map((pro) =>
+        pro.id === id ? { ...pro, [field]: value } : pro
+      ),
+    }));
+  };
+
+  // Save Company Profile & Upload JSON Snapshot to Documents
+  const handleSaveCompanyProfile = async (e) => {
+    e.preventDefault();
+    setIsSavingProfile(true);
+
+    try {
+      // 1. Persist data in localStorage so it stays on display across sessions
+      localStorage.setItem("company_profile_data", JSON.stringify(companyProfile));
+
+      // 2. Create a JSON File snapshot from the form data
+      const jsonBlob = new Blob([JSON.stringify(companyProfile, null, 2)], {
+        type: "application/json",
+      });
+      const jsonFile = new File([jsonBlob], "company_information.json", {
+        type: "application/json",
+      });
+
+      // 3. Upload to Knowledge Base documents endpoint
+      const formData = new FormData();
+      formData.append("file", jsonFile);
+
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE_URL}/api/settings/documents`, {
+        method: "POST",
+        headers: {
+          ...(token && { Authorization: `Bearer ${token}` }),
+        },
+        body: formData,
+      });
+
+      if (res.ok) {
+        const responseData = await res.json();
+        const newDoc = responseData.document || responseData.data || responseData;
+        setDocuments((prev) => [
+          newDoc,
+          ...prev.filter(
+            (d) => (d.file_name || d.original_name || d.name) !== "company_information.json"
+          ),
+        ]);
+        showStatus("success", "Company profile saved and uploaded to Knowledge Base!");
+      } else {
+        const err = await res.json();
+        showStatus("error", err.error || "Failed to save company profile document.");
+      }
+    } catch (error) {
+      console.error("Error saving company profile:", error);
+      showStatus("error", "Network error saving company profile.");
+    } finally {
+      setIsSavingProfile(false);
+    }
   };
 
   // 1. POST /api/settings/configs
@@ -315,7 +480,7 @@ export default function SettingsPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Settings & Integrations</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Manage your bot credentials, API keys, webhook URLs, and upload knowledge documents.
+            Manage your bot credentials, API keys, company details form, and upload knowledge documents.
           </p>
         </div>
 
@@ -344,6 +509,317 @@ export default function SettingsPage() {
         </div>
       ) : (
         <div className="space-y-10">
+          {/* COMPANY PROFILE KNOWLEDGE FORM SECTION */}
+          <div className="bg-white rounded-2xl p-6 lg:p-8 border border-purple-100 shadow-sm transition-all hover:shadow-md">
+            <div className="flex items-center gap-3 pb-5 mb-6 border-b border-gray-100">
+              <div className="p-2.5 bg-[#F0EDFF] rounded-xl text-[#7C5CFC]">
+                <Building2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Company Details & Knowledge Form</h2>
+                <p className="text-xs text-gray-500">
+                  Enter your business details, locations, and staff profiles. Information remains on display and syncs as a JSON document to your Knowledge Base.
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveCompanyProfile} className="space-y-6">
+              {/* Basic Details Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {/* Company Name */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold tracking-wider text-gray-700 uppercase">
+                    Company Name
+                  </label>
+                  <div className="relative flex items-center">
+                    <Building2 className="w-4 h-4 absolute left-3.5 text-gray-400" />
+                    <input
+                      type="text"
+                      required
+                      value={companyProfile.companyName}
+                      onChange={(e) =>
+                        setCompanyProfile((prev) => ({ ...prev, companyName: e.target.value }))
+                      }
+                      placeholder="e.g. Acme Health Clinic"
+                      className="w-full pl-10 pr-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7C5CFC] focus:bg-white transition"
+                    />
+                  </div>
+                </div>
+
+                {/* Company Email */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold tracking-wider text-gray-700 uppercase">
+                    Company Email
+                  </label>
+                  <div className="relative flex items-center">
+                    <Mail className="w-4 h-4 absolute left-3.5 text-gray-400" />
+                    <input
+                      type="email"
+                      required
+                      value={companyProfile.companyEmail}
+                      onChange={(e) =>
+                        setCompanyProfile((prev) => ({ ...prev, companyEmail: e.target.value }))
+                      }
+                      placeholder="contact@acme.com"
+                      className="w-full pl-10 pr-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7C5CFC] focus:bg-white transition"
+                    />
+                  </div>
+                </div>
+
+                {/* Year of Creation */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold tracking-wider text-gray-700 uppercase">
+                    Year of Creation
+                  </label>
+                  <div className="relative flex items-center">
+                    <Calendar className="w-4 h-4 absolute left-3.5 text-gray-400" />
+                    <input
+                      type="text"
+                      value={companyProfile.yearOfCreation}
+                      onChange={(e) =>
+                        setCompanyProfile((prev) => ({ ...prev, yearOfCreation: e.target.value }))
+                      }
+                      placeholder="e.g. 2018"
+                      className="w-full pl-10 pr-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7C5CFC] focus:bg-white transition"
+                    />
+                  </div>
+                </div>
+
+                {/* Opening Hours */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold tracking-wider text-gray-700 uppercase">
+                    Opening Hours
+                  </label>
+                  <div className="relative flex items-center">
+                    <Clock className="w-4 h-4 absolute left-3.5 text-gray-400" />
+                    <input
+                      type="text"
+                      value={companyProfile.openingHours}
+                      onChange={(e) =>
+                        setCompanyProfile((prev) => ({ ...prev, openingHours: e.target.value }))
+                      }
+                      placeholder="e.g. 09:00 AM"
+                      className="w-full pl-10 pr-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7C5CFC] focus:bg-white transition"
+                    />
+                  </div>
+                </div>
+
+                {/* Closing Hours */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold tracking-wider text-gray-700 uppercase">
+                    Closing Hours
+                  </label>
+                  <div className="relative flex items-center">
+                    <Clock className="w-4 h-4 absolute left-3.5 text-gray-400" />
+                    <input
+                      type="text"
+                      value={companyProfile.closingHours}
+                      onChange={(e) =>
+                        setCompanyProfile((prev) => ({ ...prev, closingHours: e.target.value }))
+                      }
+                      placeholder="e.g. 06:00 PM"
+                      className="w-full pl-10 pr-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7C5CFC] focus:bg-white transition"
+                    />
+                  </div>
+                </div>
+
+                {/* Services Offered */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold tracking-wider text-gray-700 uppercase">
+                    Services Offered
+                  </label>
+                  <div className="relative flex items-center">
+                    <Briefcase className="w-4 h-4 absolute left-3.5 text-gray-400" />
+                    <input
+                      type="text"
+                      value={companyProfile.servicesOffered}
+                      onChange={(e) =>
+                        setCompanyProfile((prev) => ({ ...prev, servicesOffered: e.target.value }))
+                      }
+                      placeholder="e.g. General Practice, Dentistry, Pediatrics"
+                      className="w-full pl-10 pr-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7C5CFC] focus:bg-white transition"
+                    />
+                  </div>
+                </div>
+
+                {/* Description */}
+                <div className="md:col-span-2 lg:col-span-3 space-y-1.5">
+                  <label className="block text-xs font-semibold tracking-wider text-gray-700 uppercase">
+                    Company Description
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={companyProfile.description}
+                    onChange={(e) =>
+                      setCompanyProfile((prev) => ({ ...prev, description: e.target.value }))
+                    }
+                    placeholder="Provide a detailed description of your business to help your bot answer customer questions..."
+                    className="w-full p-3 text-sm bg-gray-50 border border-gray-200 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7C5CFC] focus:bg-white transition"
+                  />
+                </div>
+              </div>
+
+              {/* Dynamic Locations Section */}
+              <div className="pt-4 border-t border-gray-100">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-[#7C5CFC]" />
+                    <h3 className="text-sm font-bold text-gray-900">Locations</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddLocation}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-[#7C5CFC] rounded-lg text-xs font-medium transition"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add Location
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {companyProfile.locations.map((loc, idx) => (
+                    <div
+                      key={loc.id}
+                      className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-xl"
+                    >
+                      <span className="text-xs font-semibold text-gray-400 w-6">#{idx + 1}</span>
+                      <input
+                        type="text"
+                        placeholder="Street Address (e.g. 123 Main Blvd)"
+                        value={loc.address}
+                        onChange={(e) => handleLocationChange(loc.id, "address", e.target.value)}
+                        className="flex-1 p-2 text-sm bg-white border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7C5CFC]"
+                      />
+                      <input
+                        type="text"
+                        placeholder="City / District"
+                        value={loc.city}
+                        onChange={(e) => handleLocationChange(loc.id, "city", e.target.value)}
+                        className="w-1/3 p-2 text-sm bg-white border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7C5CFC]"
+                      />
+                      {companyProfile.locations.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveLocation(loc.id)}
+                          className="p-2 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                          title="Remove Location"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Dynamic Professionals Section */}
+              <div className="pt-4 border-t border-gray-100">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <UserCheck className="w-4 h-4 text-[#7C5CFC]" />
+                    <h3 className="text-sm font-bold text-gray-900">Professionals & Staff</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddProfessional}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-[#7C5CFC] rounded-lg text-xs font-medium transition"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add Professional
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {companyProfile.professionals.map((pro, idx) => (
+                    <div
+                      key={pro.id}
+                      className="p-4 bg-gradient-to-br from-purple-50/50 to-gray-50 border border-purple-100 rounded-xl space-y-3 relative group"
+                    >
+                      <div className="flex items-center justify-between border-b border-purple-100 pb-2">
+                        <span className="text-xs font-bold text-[#7C5CFC] uppercase tracking-wider">
+                          Professional #{idx + 1}
+                        </span>
+                        {companyProfile.professionals.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveProfessional(pro.id)}
+                            className="p-1 text-gray-400 hover:text-rose-600 rounded transition"
+                            title="Remove Professional Card"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
+                        <div>
+                          <label className="block text-[10px] font-semibold text-gray-500 uppercase mb-1">
+                            Full Name
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Dr. Sarah Connor"
+                            value={pro.fullName}
+                            onChange={(e) =>
+                              handleProfessionalChange(pro.id, "fullName", e.target.value)
+                            }
+                            className="w-full p-2 text-xs bg-white border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7C5CFC]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-semibold text-gray-500 uppercase mb-1">
+                            Services Provided
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="General Consultation, Surgery"
+                            value={pro.servicesProvided}
+                            onChange={(e) =>
+                              handleProfessionalChange(pro.id, "servicesProvided", e.target.value)
+                            }
+                            className="w-full p-2 text-xs bg-white border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7C5CFC]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-semibold text-gray-500 uppercase mb-1">
+                            Working Hours
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Mon - Fri: 09:00 AM - 04:00 PM"
+                            value={pro.workingHours}
+                            onChange={(e) =>
+                              handleProfessionalChange(pro.id, "workingHours", e.target.value)
+                            }
+                            className="w-full p-2 text-xs bg-white border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#7C5CFC]"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Submit Company Profile Form */}
+              <div className="flex justify-end pt-4 border-t border-gray-100">
+                <button
+                  type="submit"
+                  disabled={isSavingProfile}
+                  className="flex items-center gap-2 px-6 py-3 bg-[#7C5CFC] hover:bg-[#6342E8] text-white rounded-xl font-medium text-sm transition shadow-lg shadow-purple-200 disabled:opacity-50"
+                >
+                  {isSavingProfile ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <FileJson className="w-4 h-4" />
+                  )}
+                  {isSavingProfile ? "Saving & Syncing JSON..." : "Save Profile & Sync Knowledge Base"}
+                </button>
+              </div>
+            </form>
+          </div>
+
           {/* CONFIGURATION KEYS FORM */}
           <form onSubmit={handleSaveConfigs} className="space-y-8">
             {CONFIG_SECTIONS.map((section, idx) => {
@@ -440,7 +916,7 @@ export default function SettingsPage() {
                 <div>
                   <h2 className="text-lg font-bold text-gray-900">Company Context Documents</h2>
                   <p className="text-xs text-gray-500">
-                    Upload documents (PDF, TXT, DOCX) to feed your bot knowledge base
+                    Upload documents (PDF, TXT, DOCX, JSON) to feed your bot knowledge base
                   </p>
                 </div>
               </div>
@@ -451,12 +927,12 @@ export default function SettingsPage() {
               <div className="border-2 border-dashed border-purple-200 rounded-2xl p-6 text-center bg-[#FAF8FF] hover:bg-[#F4EFFF] transition flex flex-col items-center justify-center">
                 <Upload className="w-8 h-8 text-[#7C5CFC] mb-2" />
                 <p className="text-sm font-medium text-gray-700">Select a company document to upload</p>
-                <p className="text-xs text-gray-400 mt-1 mb-4">Supported formats: .pdf, .txt, .doc, .docx</p>
+                <p className="text-xs text-gray-400 mt-1 mb-4">Supported formats: .pdf, .txt, .doc, .docx, .json</p>
 
                 <input
                   type="file"
                   id="file-upload"
-                  accept=".pdf,.txt,.doc,.docx"
+                  accept=".pdf,.txt,.doc,.docx,.json"
                   onChange={(e) => setSelectedFile(e.target.files[0])}
                   className="hidden"
                 />
