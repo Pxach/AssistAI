@@ -128,10 +128,12 @@ export const updateSessionStatus = async (req, res) => {
 // 4. Sync Inbound/Outbound Chat Message from Engine (HTTP POST)
 export const syncChatMessage = async (req, res) => {
   try {
-    const { phoneNumber: rawPhone, senderType, message, handover = false } = req.body;
+    const { senderType, handover = false } = req.body;
+    const rawPhone = req.body.phoneNumber || req.body.PhoneNumber;
+    const message = req.body.message !== undefined ? req.body.message : req.body.Message;
 
     const phoneNumber = cleanPhoneNumber(rawPhone);
-    if (!phoneNumber || !message) {
+    if (!phoneNumber || message === undefined) {
       return res.status(400).json({ success: false, error: 'PhoneNumber and message are required.' });
     }
 

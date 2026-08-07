@@ -112,7 +112,7 @@ const CONFIG_SECTIONS = [
       {
         key: "dashboard_api_url",
         label: "Dashboard API URL",
-        placeholder: "https://dashboard.expleo.com",
+        placeholder: "https://dashboard.company.com",
         type: "url",
         description: "Your backend's base URL — used for HTTP PATCH session sync",
       },

@@ -537,7 +537,7 @@ export async function connectToWhatsApp(io, sessionKey) {
             // 3. Handle Handover Alert to Admin
             if (aiResult.data.needsHandover) {
                 const phoneNumber = senderJid.split('@')[0];
-                const alertMsg = `🚨 *Human Intervention Required* 🚨\n\n👤 *User:* +${phoneNumber}\n🌐 *Language:* ${session.clientLanguage}\n📝 *Reason:* ${aiResult.metadata.handoverReason || "Requested human assistance."}\n\n⚠️ *Action Required:* Log into the Expleo Company WhatsApp and search for the user's number above to take over the chat.`;
+                const alertMsg = `🚨 *Human Intervention Required* 🚨\n\n👤 *User:* +${phoneNumber}\n🌐 *Language:* ${session.clientLanguage}\n📝 *Reason:* ${aiResult.metadata.handoverReason || "Requested human assistance."}\n\n⚠️ *Action Required:* Log into the Company WhatsApp account and search for the user's number above to take over the chat.`;
                 await sock.sendMessage(ADMIN_JID, { text: alertMsg });
 
                 // ── Socket.io: bot:handover_triggered (user-requested path) ───

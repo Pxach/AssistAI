@@ -3,15 +3,22 @@ import { insertEvent } from '../services/calendarService.js';
 import { strings, getLocaleString } from '../locales/strings.js';
 import { syncAppointment } from '../services/sessionSyncService.js';
 import { minifyState } from '../utils/stateMinifier.js';
+import { getConfig } from '../services/configService.js';
 
-// 🚀 DYNAMIC CATALOG FETCHER (Phase 2: replace body with real DB query)
-// TODO: Phase 2 — query services and specialists tables seeded by the ingestion pipeline.
-// e.g.:
-//   const services = await db('services').select('*');
-//   const specialists = await db('specialists').select('*');
-//   return { services, specialists };
 async function fetchCompanyCatalogFromDB() {
-  return { services: [], specialists: [] };
+  try {
+    const baseUrl = (await getConfig('DASHBOARD_API_URL')) || process.env.DASHBOARD_API_URL || 'http://localhost:5000';
+    const response = await fetch(`${baseUrl}/api/business/services`);
+    if (!response.ok) {
+      console.error(`[BookingHandler] Failed to fetch services: ${response.statusText}`);
+      return { services: [], specialists: [] };
+    }
+    const data = await response.json();
+    return { services: data.services || [], specialists: [] };
+  } catch (error) {
+    console.error(`[BookingHandler] Error fetching services:`, error.message);
+    return { services: [], specialists: [] };
+  }
 }
 
 export async function handleBooking(message, language, bookingState = {}, history = [], senderPhone = "", botPhone = "", ioContext = {}) {
@@ -56,6 +63,7 @@ export async function handleBooking(message, language, bookingState = {}, histor
 
     AVAILABLE CATALOG (Services & Specialists with mapped service IDs):
     ${JSON.stringify(liveCatalog)}
+    - STRICT SERVICE GROUNDING: You must present the EXACT list of services provided in the context. Do NOT omit any services. Do NOT invent, guess, or offer any services that are not explicitly listed in the injected catalog.
 
     CONVERSATION HISTORY:
     ${recentHistory.map(item => `${item.role}: ${item.parts[0].text}`).join("\n")}
@@ -69,6 +77,7 @@ export async function handleBooking(message, language, bookingState = {}, histor
     - Update the JSON with any new information provided.
     - SPECIALIST SELECTION & AUTO-ASSIGNMENT: Check the AVAILABLE CATALOG mapping. If the user names a specialist, use that name. If the user asks for "first available" or proceeds to specify date, time, name, or contact without specifying a specialist, automatically pick the first available specialist whose 'services' array contains the requested service ID (e.g., Sarah for Database Optimization).
     - SPECIALIST REJECTION: If a user rejects a specialist, check if anyone else provides that service. If NO ONE else is available for that service, keep 'specialist_name' as null and explicitly tell the user in 'ai_direct_reply' that this specialist is the only one who handles this service.
+    - DARIJA TIME PARSING & SLOT FILLING: Note that users will speak Moroccan Darija. Words like "ghada" or "ghda" mean "tomorrow" and refer to the appointment DATE, NOT the user's name.
     - SPLIT DATE & TIME: Convert relative date terms ("Ghada", "demain", "tomorrow") into exact YYYY-MM-DD format based on Today's Date. "Ghada" means tomorrow. Extract 'appointment_date' (YYYY-MM-DD) first. When the user specifies an hour (e.g., "10", "f 10", "10h", "at 10", "10:00"), extract it as a formatted time string (e.g., "10:00").
     - STRICT TIME RULE: Vague time words without a specific number (like "morning", "afternoon", "sbah", "lil") are NOT valid appointment times. Keep 'appointment_time' as null until a specific hour is given. Explicit numbers like "10", "f 10", "10h" ARE valid exact hours ("10:00").
     - SENDER PHONE RESOLUTION: If the user refers to their current chat line ("this number", "my number"), extract their actual phone number ("${senderPhone}") into 'contact_info'.
@@ -86,7 +95,7 @@ export async function handleBooking(message, language, bookingState = {}, histor
     - NEVER extract generic conversational words ('dispo', 'yes', 'specialist', 'awl whd', 'oui') as a 'service_requested'.
     
     Q&A & COLLECTION FLOW (STRICT SEQUENTIAL RULES):
-    - You are a CONVERSATIONAL data collector. Your job is to collect EVERY required field before confirming.
+    - You are a CONVERSATIONAL data collector. You must collect information ONE step at a time. 1. Ask for the service. 2. Ask for the date and time. 3. Explicitly ask for the user's full name and wait for their reply. 4. Ask for contact info. NEVER fill in the user's name without explicitly asking them for it first.
     - REQUIRED FIELDS (in collection order): service_requested → specialist_name → appointment_date → appointment_time → customer_name → contact_info → user_confirmed.
     - MISSING FIELD HANDLING: If the user's message fills one field but other required fields are still null, set 'ai_direct_reply' to politely ask for the NEXT missing field. Do NOT silently skip fields.
     - contact_info IS STRICTLY REQUIRED. Never proceed to confirmation if contact_info is null. If the user gives only their name, ask for their phone number or email next.

@@ -9,7 +9,7 @@ export async function handleFaq(message, language, context) {
   const knowledgeBaseText = await getKnowledgeBase();
 
   const prompt = `
-    You are a polite, natural, and helpful customer service assistant representing Expleo Company.
+    You are a polite, natural, and helpful customer service assistant. You must STRICTLY derive your identity, the name of the company you represent, and all business details exclusively from the provided RAG Context.
     Analyze the user's input and respond based on the provided Company Knowledge Base.
 
     Company Knowledge Base:

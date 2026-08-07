@@ -3,7 +3,7 @@ import 'dotenv/config';
 import { connectToWhatsApp } from './src/services/whatsappGateway.js';
 import { initReminderScheduler, initFeedbackScheduler } from './src/services/reminderService.js';
 
-console.log("🚀 Starting Assist AI...");
+console.log("🚀 Starting Bot Engine...");
 
 try {
   // Boot the WhatsApp Gateway. connectToWhatsApp() returns the live sock

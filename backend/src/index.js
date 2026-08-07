@@ -79,4 +79,5 @@ export { io };
 
 // 5. Start Server
 httpServer.listen(PORT, () => {
+  console.log(`🚀 Backend API listening on port ${PORT}`);
 });

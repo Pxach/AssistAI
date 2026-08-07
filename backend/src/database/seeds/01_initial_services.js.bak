@@ -1,0 +1,12 @@
+export async function seed(knex) {
+  // Deletes ALL existing entries in services table to prevent duplicates
+  await knex('services').del();
+
+  // Inserts seed entries
+  await knex('services').insert([
+    { id: 1, name: 'Database Optimization', department: 'IT Support', duration_minutes: 60 },
+    { id: 2, name: 'System Audit', department: 'Security', duration_minutes: 120 },
+    { id: 3, name: 'Cloud Migration Strategy', department: 'Engineering', duration_minutes: 90 },
+    { id: 4, name: 'General Consultation', department: 'Consulting', duration_minutes: 30 }
+  ]);
+}

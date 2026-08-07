@@ -34,24 +34,30 @@ function getExtension(filename) {
 // ─── LLM Extraction Prompt ────────────────────────────────────────────────────
 function buildExtractionPrompt(rawText) {
   return `
-You are a precise data extraction assistant. Your job is to analyze the following business document and extract structured information from it.
+You are a precise data extraction assistant. Your ONLY job is to analyze the following business document and extract structured, factual information from it.
 
 Return ONLY a raw JSON object (no markdown, no code blocks, no extra text) with EXACTLY these two keys:
 
-1. "services": An array of service objects. Each object must have:
-   - "name": string — the exact name of the service offered (e.g., "Haircut", "Tax Consultation")
-   - "department": string — the department or category (e.g., "beauty", "finance", "it", "legal"). Use "general" if not specified.
-   - "duration": number — duration in minutes as an integer. Use 60 if not specified.
-   If no services are mentioned, return an empty array.
+1. "services": An array of service objects representing ALL bookable services mentioned in the document.
+   - You MUST include EVERY service explicitly mentioned. Do NOT omit any. Do NOT invent or assume services not stated.
+   - Each object must have:
+     * "name": string — the exact name of the service as written in the document.
+     * "department": string — the department or category (e.g., "IT", "finance", "legal", "consulting"). Use "General" if not specified.
+     * "duration": number — estimated duration in minutes as an integer. Use 60 if not specified.
+   - Deduplicate: if the same service appears multiple times, include it only ONCE.
+   - If no bookable services are mentioned at all, return an empty array []. Never fabricate services.
 
-2. "company_info": A single comprehensive string summarizing ALL other business details found in the document. This should include (if present): company name, location/address, business hours, contact details (phone, email, website), pricing policies, booking policies, cancellation policies, and any other relevant information for a customer-facing AI assistant. Write it as clear, complete prose.
+2. "company_info": A single comprehensive string summarizing ALL other business details found in the document.
+   Include (if present): company name, location/address, business hours, contact details (phone, email, website),
+   pricing, booking policies, cancellation policies, and any other information relevant to a customer-facing AI.
+   Write it as clear, complete prose. Do NOT include the service list here — only supporting business context.
 
 DOCUMENT TEXT:
 ---
 ${rawText}
 ---
 
-IMPORTANT: Your response must be a valid JSON object. Nothing else.
+CRITICAL: Return a valid JSON object. No markdown. No code fences. No extra commentary. Nothing else.
 `;
 }
 
@@ -115,17 +121,24 @@ async function extractStructuredData(rawText) {
 }
 
 // ─── Step 4: Seed services table ─────────────────────────────────────────────
-async function seedServices(services, fileName) {
-  if (services.length === 0) return [];
+//
+// Strategy: clear ALL existing services, then insert the freshly extracted list
+// in a single transaction. This ensures the database always reflects the most
+// recently uploaded document and completely eliminates the need for manual seed
+// files (backend/src/database/seeds/01_initial_services.js is now obsolete).
+//
+async function seedServices(services) {
+  return db.transaction(async (trx) => {
+    // 1. Wipe the current catalog so stale entries from previous uploads are removed.
+    await trx('services').delete();
 
-  // Insert with onConflict ignored so re-uploading the same doc won't double-insert.
-  // The `name` column has no unique constraint in the schema, so we do a plain insert.
-  // Return the inserted rows by re-querying the names we just inserted.
-  await db('services').insert(services);
+    // 2. Nothing to insert — return empty array gracefully.
+    if (!services || services.length === 0) return [];
 
-  const names = services.map((s) => s.name);
-  const inserted = await db('services').whereIn('name', names).select('*');
-  return inserted;
+    // 3. Bulk-insert the new catalog and return all created rows.
+    const inserted = await trx('services').insert(services).returning('*');
+    return inserted;
+  });
 }
 
 // ─── Step 5: Upsert knowledge_base ───────────────────────────────────────────
@@ -212,12 +225,15 @@ export async function parseDocument(req, res) {
       });
     }
     // ── 4. Seed services ───────────────────────────────────────────────────
+    //    Atomically replaces the entire services catalog with what was
+    //    extracted from this document. No manual seed files needed.
     let insertedServices = [];
     let servicesError = null;
     try {
-      insertedServices = await seedServices(structuredData.services, originalname);
+      insertedServices = await seedServices(structuredData.services);
+      console.log(`[Ingestion] ✅ Services catalog replaced: ${insertedServices.length} service(s) ingested from "${originalname}".`);
     } catch (dbErr) {
-      console.error('[Ingestion] Services DB insert failed:', dbErr.message);
+      console.error('[Ingestion] Services DB replace failed:', dbErr.message);
       servicesError = dbErr.message;
       // Non-fatal — continue to save knowledge base
     }
