@@ -5,3 +5,4 @@ calendar-key.json
 *.log
 node_modules/
 **/node_modules/
+backend-engine/auth_info_baileys
