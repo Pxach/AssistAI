@@ -3,7 +3,7 @@ import { insertEvent } from '../services/calendarService.js';
 import { strings, getLocaleString } from '../locales/strings.js';
 import { syncAppointment } from '../services/sessionSyncService.js';
 import { minifyState } from '../utils/stateMinifier.js';
-import { getConfig } from '../services/configService.js';
+import { getConfig, getCompanyProfile } from '../services/configService.js';
 
 async function fetchCompanyCatalogFromDB() {
   try {
@@ -46,6 +46,8 @@ export async function handleBooking(message, language, bookingState = {}, histor
   });
   
   const liveCatalog = await fetchCompanyCatalogFromDB();
+  const companyProfile = await getCompanyProfile();
+  const companyProfileStr = companyProfile ? JSON.stringify(companyProfile, null, 2) : "Not provided.";
 
   // 2. Extract Entities
   const prompt = `
@@ -61,8 +63,14 @@ export async function handleBooking(message, language, bookingState = {}, histor
     You MUST generate 'ai_direct_reply' strictly in the ACTIVE CONVERSATION LANGUAGE ("${language}"). 
     - If the language is 'darija', use Moroccan Arabic written in Latin letters (e.g., "Nhar w w9t..."). It is FORBIDDEN to use French when 'darija' is active.
 
+    STRUCTURED COMPANY PROFILE (Hours, Locations, Professionals):
+    ${companyProfileStr}
+
     AVAILABLE CATALOG (Services & Specialists with mapped service IDs):
     ${JSON.stringify(liveCatalog)}
+    
+    Single Source of Truth: You MUST exclusively use the injected database services list as the official catalog of bookable services. You must rigorously ignore any generic 'services offered' strings or summaries found within the profile_data JSON object. The only part of the profile_data JSON you should cross-reference regarding services is the professionals array, purely to map which staff member performs which official service.
+
     - STRICT SERVICE GROUNDING: You must present the EXACT list of services provided in the context. Do NOT omit any services. Do NOT invent, guess, or offer any services that are not explicitly listed in the injected catalog.
 
     CONVERSATION HISTORY:
@@ -77,6 +85,7 @@ export async function handleBooking(message, language, bookingState = {}, histor
     - Update the JSON with any new information provided.
     - SPECIALIST SELECTION & AUTO-ASSIGNMENT: Check the AVAILABLE CATALOG mapping. If the user names a specialist, use that name. If the user asks for "first available" or proceeds to specify date, time, name, or contact without specifying a specialist, automatically pick the first available specialist whose 'services' array contains the requested service ID (e.g., Sarah for Database Optimization).
     - SPECIALIST REJECTION: If a user rejects a specialist, check if anyone else provides that service. If NO ONE else is available for that service, keep 'specialist_name' as null and explicitly tell the user in 'ai_direct_reply' that this specialist is the only one who handles this service.
+    - OUT-OF-HOURS HANDLING: Rigorously check the requested appointment time against the specific 'workingHours' of the requested professional found in the STRUCTURED COMPANY PROFILE. If the user requests a time outside those specific hours, you MUST NOT book the appointment (keep appointment_time null). Instead, politely inform the customer in 'ai_direct_reply' that the time is outside the professional's hours, and dynamically suggest two options: 1) choosing a different time/date for this specific professional, or 2) picking a different available professional who provides the same service.
     - DARIJA TIME PARSING & SLOT FILLING: Note that users will speak Moroccan Darija. Words like "ghada" or "ghda" mean "tomorrow" and refer to the appointment DATE, NOT the user's name.
     - SPLIT DATE & TIME: Convert relative date terms ("Ghada", "demain", "tomorrow") into exact YYYY-MM-DD format based on Today's Date. "Ghada" means tomorrow. Extract 'appointment_date' (YYYY-MM-DD) first. When the user specifies an hour (e.g., "10", "f 10", "10h", "at 10", "10:00"), extract it as a formatted time string (e.g., "10:00").
     - STRICT TIME RULE: Vague time words without a specific number (like "morning", "afternoon", "sbah", "lil") are NOT valid appointment times. Keep 'appointment_time' as null until a specific hour is given. Explicit numbers like "10", "f 10", "10h" ARE valid exact hours ("10:00").
@@ -125,6 +134,7 @@ export async function handleBooking(message, language, bookingState = {}, histor
       "contact_info":       "<valid phone/email string or null>  [REQUIRED for confirmation]",
       "specialist_name":    "<string or null>",
       "service_requested":  "<string or null>",
+      "service_id":         "<number or null> [Extract the corresponding integer ID from the CATALOG based on the service_requested]",
       "appointment_date":   "<YYYY-MM-DD or null>  [REQUIRED for confirmation]",
       "appointment_time":   "<exact time string or null>  [REQUIRED for confirmation]",
       "user_confirmed":     <boolean — MUST be false unless ALL 6 gating conditions above are met>,

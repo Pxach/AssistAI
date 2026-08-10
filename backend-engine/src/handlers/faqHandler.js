@@ -1,22 +1,33 @@
 // src/handlers/faqHandler.js
 import { callAI } from '../services/ai/llmClient.js';
-import { getKnowledgeBase } from '../services/configService.js';
+import { getKnowledgeBase, getCompanyProfile, getCompanyCatalog } from '../services/configService.js';
 import { strings, getLocaleString } from '../locales/strings.js';
 
 export async function handleFaq(message, language, context) {
   // Fetch the dynamic knowledge base at call time.
   // Future: getKnowledgeBase() will return DB-sourced content (e.g. parsed PDFs).
   const knowledgeBaseText = await getKnowledgeBase();
+  const companyProfile = await getCompanyProfile();
+  const companyProfileStr = companyProfile ? JSON.stringify(companyProfile, null, 2) : "Not provided.";
+  const liveCatalog = await getCompanyCatalog();
 
   const prompt = `
-    You are a polite, natural, and helpful customer service assistant. You must STRICTLY derive your identity, the name of the company you represent, and all business details exclusively from the provided RAG Context.
+    You are a polite, natural, and helpful customer service assistant. You must STRICTLY derive your identity, the name of the company you represent, and all business details exclusively from the provided RAG Context and Structured Company Profile.
     Analyze the user's input and respond based on the provided Company Knowledge Base.
 
-    Company Knowledge Base:
+    Structured Company Profile (Hours, Locations, Professionals):
+    ${companyProfileStr}
+
+    AVAILABLE CATALOG (Dynamic Database Services):
+    ${JSON.stringify(liveCatalog)}
+
+    Company Knowledge Base (RAG Context):
     ${knowledgeBaseText}
 
     User Question/Message: "${message}"
     Requested Language: "${language}"
+
+    Single Source of Truth: You MUST exclusively use the injected database services list as the official catalog of bookable services. You must rigorously ignore any generic 'services offered' strings or summaries found within the profile_data JSON object. The only part of the profile_data JSON you should cross-reference regarding services is the professionals array, purely to map which staff member performs which official service.
 
     STRICT BEHAVIORAL RULES:
     1. GREETING RULE: If the user sends a simple greeting (e.g., "Salam", "Hello", "Bonjour", "Hi", "Labas"), respond with a brief, friendly, and natural greeting in the Requested Language. DO NOT dump the entire company bio, hours of operation, or service list unless explicitly asked by the user.

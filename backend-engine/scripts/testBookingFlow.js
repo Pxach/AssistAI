@@ -77,13 +77,13 @@ async function runBookingFlowTest() {
   const botPhone = '212600000000';
 
   const testMessages = [
-    "Bghit nched rdv",
-    "Database Optimization",
-    "Ghada f 10",
-    "Zayd",
-    "test@example.com",
-    "Oui kolchi mzian"
-  ];
+  "Bghit nched rdv",
+  "UI/UX Interface Review", // Tests the ghost ID SQL fallback fix
+  "Ghada f 5:30 PM",        // Out-of-hours trigger (fails the 4:00 PM cutoff)
+  "Zayd",
+  "zayd@mail.me",
+  "Oui kolchi mzian"
+];
 
   // Initialize simulated session for test user
   let session = {

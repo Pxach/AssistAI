@@ -57,3 +57,22 @@ router.get('/services', async (req, res) => {
 
 export default router;
 
+/**
+ * GET /api/business/profile
+ *
+ * Returns the structured company profile data from company_configs.
+ */
+router.get('/profile', async (req, res) => {
+  try {
+    const row = await db('company_configs').select('profile_data').first();
+    if (!row || !row.profile_data) {
+      return res.status(200).json({ profile: null, message: 'No company profile data available.' });
+    }
+    return res.status(200).json({ profile: row.profile_data });
+  } catch (err) {
+    console.error('[businessRoutes] GET /profile error:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+

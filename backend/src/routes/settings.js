@@ -229,8 +229,22 @@ router.post('/documents', upload.single('file'), async (req, res) => {
           }
           await knex('company_documents').where({ id: oldDoc.id }).delete();
         }
+        
+        // Parse JSON and save to company_configs.profile_data
+        const jsonContent = fs.readFileSync(req.file.path, 'utf8');
+        const parsedProfile = JSON.parse(jsonContent);
+        
+        if (companyId !== null) {
+          await knex('company_configs')
+            .insert({ company_id: companyId, profile_data: JSON.stringify(parsedProfile) })
+            .onConflict('company_id')
+            .merge(['profile_data', 'updated_at']);
+        } else {
+          await knex('company_configs').update({ profile_data: JSON.stringify(parsedProfile), updated_at: knex.fn.now() });
+        }
+        
       } catch (cleanErr) {
-        console.warn('Warning cleaning up old company_information.json:', cleanErr.message);
+        console.warn('Warning processing company_information.json:', cleanErr.message);
       }
     }
 

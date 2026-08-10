@@ -65,13 +65,19 @@ export const processBooking = async (req, res) => {
     try {
         const result = processBookingRequest(req.body);
 
+        let actualServiceId = result.service_id;
+        if (!actualServiceId && result.service_requested) {
+            const svc = await db('services').where('name', 'ilike', result.service_requested).first();
+            if (svc) actualServiceId = svc.id;
+        }
+
         if (result.service_requested && result.appointment_date && result.appointment_time) {
             const newRecord = {
                 customer_name: result.customer_name,
                 contact_info: result.contact_info,
                 department: result.department,
                 specialist_id: result.specialist_id || null,
-                service_id: result.service_id || 1,
+                service_id: actualServiceId || 1,
                 appointment_date: result.appointment_date,
                 appointment_time: result.appointment_time,
                 status: 'pending',
@@ -119,12 +125,18 @@ export const syncAppointment = async (req, res) => {
             });
         }
 
+        let actualServiceId = req.body.service_id;
+        if (!actualServiceId && service_requested) {
+            const svc = await db('services').where('name', 'ilike', service_requested).first();
+            if (svc) actualServiceId = svc.id;
+        }
+
         const newRecord = {
             customer_name: customer_name || 'Unknown',
             contact_info: contact_info,
             department: 'general',
             specialist_id: null,
-            service_id: 1,
+            service_id: actualServiceId || 1,
             appointment_date,
             appointment_time,
             status: 'confirmed',

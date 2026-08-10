@@ -1,6 +1,5 @@
-// src/services/ai/intentRouter.js
 import { callAI } from './llmClient.js';
-import { getKnowledgeBase } from '../configService.js';
+import { getKnowledgeBase, getCompanyProfile, getCompanyCatalog } from '../configService.js';
 import { minifyState } from '../../utils/stateMinifier.js';
 
 export async function routeIntent(text, language, bookingState, history) {
@@ -9,6 +8,9 @@ export async function routeIntent(text, language, bookingState, history) {
   // Inject the dynamic knowledge base so the router has company context
   // when making intent decisions (e.g. detecting valid service mentions).
   const knowledgeBaseText = await getKnowledgeBase();
+  const companyProfile = await getCompanyProfile();
+  const companyProfileStr = companyProfile ? JSON.stringify(companyProfile, null, 2) : "Not provided.";
+  const liveCatalog = await getCompanyCatalog();
 
   const recentHistory = Array.isArray(history) ? history.slice(-3) : [];
   const minifiedBookingState = minifyState(bookingState);
@@ -26,8 +28,16 @@ export async function routeIntent(text, language, bookingState, history) {
     - review (leaving feedback, rating, or complaint)
     - unknown (anything else)
 
+    STRUCTURED COMPANY PROFILE (Hours, Locations, Professionals):
+    ${companyProfileStr}
+
+    AVAILABLE CATALOG (Dynamic Database Services):
+    ${JSON.stringify(liveCatalog)}
+
     COMPANY CONTEXT (use this to better understand service-related terms):
     ${knowledgeBaseText}
+
+    Single Source of Truth: You MUST exclusively use the injected database services list as the official catalog of bookable services. You must rigorously ignore any generic 'services offered' strings or summaries found within the profile_data JSON object. The only part of the profile_data JSON you should cross-reference regarding services is the professionals array, purely to map which staff member performs which official service.
 
     Today's Date is: ${today}
 
