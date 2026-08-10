@@ -1,25 +1,14 @@
 // src/services/configService.js
 //
 // Centralized configuration gateway.
-//
-// ─── ARCHITECTURE NOTE ───────────────────────────────────────────────────────
-// Both exported functions are async by design. Right now they read from
-// process.env (fast, synchronous under the hood), but the async contract means
-// your teammate can swap the body to a DB/API call at any time without touching
-// any of the callers — they already await the result.
-// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Returns a configuration value by key.
- * Future: replace `process.env[key]` with a DB query such as:
- *   const row = await db.query('SELECT value FROM config WHERE key = $1', [key]);
- *   return row.rows[0]?.value ?? null;
  *
  * @param {string} key - The configuration key to look up.
  * @returns {Promise<string|undefined>}
  */
 export async function getConfig(key) {
-  // TODO: swap with DB call when the dashboard config table is ready.
   return process.env[key];
 }
 

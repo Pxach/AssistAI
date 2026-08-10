@@ -1,6 +1,6 @@
 // src/services/sessionSyncService.js
 //
-// Fire-and-forget HTTP PATCH helper that keeps the teammate's backend in sync
+// Fire-and-forget HTTP PATCH helper that keeps the backend in sync
 // with every WhatsApp connection state change.
 //
 // ─── CONTRACT ─────────────────────────────────────────────────────────────────

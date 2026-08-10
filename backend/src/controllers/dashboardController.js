@@ -172,13 +172,12 @@ export const exportCsv = async (req, res) => {
   try {
     const records = await db('appointments')
       .leftJoin('services', 'appointments.service_id', 'services.id')
-      .leftJoin('specialists', 'appointments.specialist_id', 'specialists.id')
       .select(
         'appointments.id',
         'appointments.customer_name',
         'appointments.contact_info',
         'services.name as service_name',
-        'specialists.name as specialist_name',
+        'appointments.specialist_name',
         'appointments.appointment_date',
         'appointments.appointment_time',
         'appointments.status',

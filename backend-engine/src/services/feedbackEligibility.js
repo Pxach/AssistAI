@@ -1,8 +1,7 @@
 // src/services/feedbackEligibility.js
 
 /**
- * Placeholder function to check if a user is eligible to receive a feedback prompt.
- * Teammate will connect this to a database later (e.g. to check if the user has already submitted).
+ * Checks if a user is eligible to receive a feedback survey link.
  * 
  * @param {string} phoneNumber - Clean phone number of the client.
  * @returns {Promise<boolean>}

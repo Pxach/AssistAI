@@ -2,15 +2,7 @@
 import { google } from 'googleapis';
 import { getConfig } from './configService.js';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CATALOG HELPER
-// Performs a best-effort name-match against the mock catalog to resolve the
-// numeric IDs and department expected by the bot:booking_created payload.
-// When the DB is live, this will be replaced by a single query joining the
-// Services and Specialists tables.
-// ─────────────────────────────────────────────────────────────────────────────
 async function resolveCatalogIds(bookingState) {
-  // TODO: replace with real DB query when catalog tables are ready.
   const catalog = {
     services: [
       { id: 1, name: 'Database Optimization', department: 'it' },

@@ -18,10 +18,6 @@
  * Accepts a raw booking input object and returns a normalised booking record
  * ready for DB insertion via appointmentController.
  *
- * TODO (Phase 2): replace this stub with real catalog DB lookups:
- *   const matchedService = await db('services').where({ name: input.service_name }).first();
- *   const matchedSpecialist = await db('specialists').where({ name: input.specialist_name }).first();
- *
  * @param {object} input - Raw booking fields from the request body.
  * @returns {object}     - Normalised booking result object.
  */
