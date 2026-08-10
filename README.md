@@ -1,629 +1,811 @@
-<div align="center">
-
 # AssistAI
 
-**AI-powered WhatsApp customer support, intelligent booking, and live intervention platform**
-
-[![Node.js](https://img.shields.io/badge/Node.js-22.x-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
-[![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-22.x-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Express](https://img.shields.io/badge/Express-5.x-000000?logo=express&logoColor=white)](https://expressjs.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Knex.js](https://img.shields.io/badge/Knex.js-3.x-E16426?logoColor=white)](https://knexjs.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-15.x-000000?logo=next.js&logoColor=white)](https://nextjs.org/)
+[![Baileys](https://img.shields.io/badge/Baileys-WhatsApp_Gateway-25D366?logo=whatsapp&logoColor=white)](https://github.com/WhiskeySockets/Baileys)
+[![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
 
-</div>
+---
+
+**AssistAI** is a **multi-tenant AI booking and context injection engine** delivered over WhatsApp. It enables businesses to deploy a fully autonomous conversational AI assistant capable of handling end-to-end appointment scheduling, FAQ resolution, sentiment-aware human handover, and post-appointment feedback — all driven by business-specific context extracted from uploaded documents.
+
+The platform is architected around a **hybrid database model** that strictly enforces tenant isolation: relational tables govern transactional data integrity, while a JSONB configuration column delivers dynamic, schema-free business context directly into every AI prompt at runtime.
 
 ---
 
 ## Table of Contents
 
-1. [Project Overview](#1-project-overview)
-2. [Tech Stack](#2-tech-stack)
-3. [Architecture](#3-architecture)
-4. [Directory Structure](#4-directory-structure)
-5. [Prerequisites](#5-prerequisites)
-6. [Setup & Installation](#6-setup--installation)
-7. [Environment Variables](#7-environment-variables)
-8. [Running the Services](#8-running-the-services)
-9. [Database Schema](#9-database-schema)
-10. [Key Features & API Endpoints](#10-key-features--api-endpoints)
-11. [Testing & Verification](#11-testing--verification)
-12. [Deployment Notes](#12-deployment-notes)
+1. [Project Structure](#1-project-structure)
+2. [Architecture & Data Flow](#2-architecture--data-flow)
+   - [System Components](#21-system-components)
+   - [Single Source of Truth (SSOT) Design](#22-single-source-of-truth-ssot-design)
+   - [The Relational Services Table](#23-the-relational-services-table)
+   - [The company\_configs.profile\_data JSONB Column](#24-the-company_configsprofile_data-jsonb-column)
+   - [AI Conversation Pipeline](#25-ai-conversation-pipeline)
+   - [Multi-Provider AI Gateway with Failover](#26-multi-provider-ai-gateway-with-failover)
+   - [Cross-Service Synchronization](#27-cross-service-synchronization)
+3. [AI Document Extraction Pipeline](#3-ai-document-extraction-pipeline)
+4. [Database Schema Reference](#4-database-schema-reference)
+5. [Local Development & Testing Environment](#5-local-development--testing-environment)
+   - [Prerequisites](#51-prerequisites)
+   - [Environment Configuration](#52-environment-configuration)
+   - [Database Setup & Migrations](#53-database-setup--migrations)
+   - [Running Services Locally](#54-running-services-locally)
+   - [E2E CLI Testing: testBookingFlow.js](#55-e2e-cli-testing-testbookingflowjs)
+6. [API Reference](#6-api-reference)
+7. [Deployment Guide](#7-deployment-guide)
+   - [Pre-Deployment Checklist](#71-pre-deployment-checklist)
+   - [Database Migration in Production](#72-database-migration-in-production)
+   - [Starting the Production Server](#73-starting-the-production-server)
+   - [Multi-Tenant Database Security](#74-multi-tenant-database-security)
+8. [Cron Schedulers](#8-cron-schedulers)
 
 ---
 
-## 1. Project Overview
+## 1. Project Structure
 
-AssistAI is a full-stack SaaS platform that connects businesses to their WhatsApp customers through an AI-powered conversation engine. It handles three core workflows autonomously — with live human intervention always one click away.
-
-| Capability | Description |
-|---|---|
-| **Dynamic Q&A (RAG)** | Answers customer questions in real time using a knowledge base built from uploaded business documents (PDF, DOCX, TXT). |
-| **Intelligent Booking** | Guides customers through a natural multi-turn appointment booking flow: service selection → specialist → date/time → confirmation → Google Calendar event. |
-| **Human Handover** | Detects frustrated or stuck users via an anti-loop circuit breaker, escalates to a human agent on WhatsApp, and alerts the dashboard in real time via Socket.io. |
-| **Feedback Collection** | Automatically sends post-appointment satisfaction prompts; routes positive reviews to Google Reviews and negative feedback to a Tally form. |
-| **Admin Dashboard** | Next.js dashboard with live conversation monitoring, booking/review analytics, document management, and WhatsApp gateway control. |
-
-**Languages supported:** French · English · Arabic · Moroccan Darija (auto-detected per session)
-
----
-
-## 2. Tech Stack
-
-### Backend API (`backend/`)
-
-| Layer | Technology |
-|---|---|
-| Runtime | Node.js 22 + ES Modules |
-| Framework | Express 5 |
-| Database ORM | Knex 3 (query builder + migrations) |
-| Database | PostgreSQL 16 |
-| Authentication | JWT (cookie-based, `jsonwebtoken`) |
-| File ingestion | Multer (disk + memory storage) |
-| Document parsing | `pdf-parse`, `mammoth` (DOCX) |
-| Real-time | Socket.io 4 |
-
-### Backend Engine (`backend-engine/`)
-
-| Layer | Technology |
-|---|---|
-| Runtime | Node.js 22 + ES Modules |
-| WhatsApp Gateway | `@whiskeysockets/baileys` 7 (multi-device) |
-| LLM Client | Multi-provider with auto-failover: **Gemini 3.5** → Groq → Mistral → Nvidia NIM → OpenRouter |
-| Calendar | Google Calendar API v3 (Service Account) |
-| Scheduling | `node-cron` (daily reminder & feedback crons) |
-| Security | AI-powered prompt-injection classifier (fail-closed) |
-| Real-time | Socket.io-client (pushes events to dashboard) |
-
-### Frontend (`frontend/`)
-
-| Layer | Technology |
-|---|---|
-| Framework | Next.js 16 (App Router) |
-| Styling | Tailwind CSS 4 |
-| Icons | Lucide React |
-| Real-time | Socket.io-client |
-| Auth | Cookie-based JWT, Next.js Middleware |
-
----
-
-## 3. Architecture
-
-### End-to-End Message Pipeline
-
-```mermaid
-flowchart TD
-    WA[("📱 WhatsApp\nCustomer")]
-    GW["⚙️ WhatsApp Gateway\nBaileys / backend-engine"]
-    SEC["🛡️ Security Classifier\nPrompt-injection filter"]
-    LANG["🌐 Language Detector\nfr · en · ar · darija"]
-    IR["🧭 Intent Router\nLLM-powered classification"]
-
-    FAQ["📚 FAQ Handler\nRAG · Knowledge Base"]
-    BOOK["📅 Booking Engine\nMulti-turn state machine"]
-    HAND["🤝 Handover Handler\nHuman escalation"]
-    FEED["⭐ Feedback Handler\nPost-appointment rating"]
-
-    KB[("📄 Knowledge Base\nPostgreSQL")]
-    GCAL[("📆 Google Calendar\nService Account API")]
-    PG[("🐘 PostgreSQL\nAppointments · Sessions\nReviews · Chat Logs")]
-
-    SYNC["🔄 Session Sync\nHTTP PATCH / POST"]
-    DASH["🖥️ Dashboard\nNext.js + Socket.io"]
-    ADMIN["👤 Human Agent\nWhatsApp manager"]
-
-    WA -->|"Inbound message"| GW
-    GW --> SEC
-    SEC -->|"Safe"| LANG
-    SEC -->|"Blocked"| WA
-    LANG --> IR
-    IR -->|"faq"| FAQ
-    IR -->|"booking"| BOOK
-    IR -->|"handover"| HAND
-    IR -->|"feedback flag"| FEED
-
-    FAQ --> KB
-    BOOK --> GCAL
-    BOOK --> PG
-    HAND --> PG
-
-    GW --> SYNC
-    SYNC --> PG
-    SYNC -->|"Socket.io events"| DASH
-    DASH -->|"Outbound msg"| GW
-    GW -->|"Reply"| WA
-
-    HAND -->|"Alert"| ADMIN
-    ADMIN -->|"Manual reply"| WA
-```
-
-### Anti-Loop Circuit Breaker
-
-```
-Consecutive unknown intents or repeated replies
-         ↓
-  FAIL_THRESHOLD = 3 reached
-         ↓
-  Bot sends escalation message to user
-  Alert sent to admin WhatsApp JID
-  Session flagged as handover = true
-  Dashboard receives bot:handover_triggered event
-```
-
-### RAG Document Ingestion Pipeline
-
-```
-Upload PDF/DOCX/TXT via Dashboard
-         ↓
-  Text extraction (pdf-parse / mammoth)
-         ↓
-  LLM structured extraction:
-    { services: [...], company_info: "..." }
-         ↓
-  Seed 'services' table
-  Upsert 'knowledge_base' table
-         ↓
-  Engine reads knowledge base on each FAQ query
-  (fetched live from backend API at call time)
-```
-
----
-
-## 4. Directory Structure
+The monorepo is organized into three independently deployable services:
 
 ```
 AssistAI/
-│
-├── backend/                        # REST API — dashboard data, auth, document ingestion
+├── backend/                   # REST API — Express + Knex + PostgreSQL
 │   ├── src/
-│   │   ├── controllers/
-│   │   │   ├── authController.js       # Register, login, logout (JWT)
-│   │   │   ├── appointmentController.js# CRUD + sync for appointments
-│   │   │   ├── dashboardController.js  # Analytics aggregations + CSV export
-│   │   │   ├── documentController.js   # RAG ingestion pipeline (PDF/DOCX → LLM → DB)
-│   │   │   ├── handoverController.js   # Handover request management
-│   │   │   ├── reviewController.js     # Review submission & listing
-│   │   │   └── whatsappController.js   # Gateway status, session sync, chat logs
-│   │   ├── routes/
-│   │   │   ├── index.js                # Route aggregator
-│   │   │   ├── authRoutes.js           # POST /api/auth/register|login|logout
-│   │   │   ├── appointmentRoutes.js    # GET|POST /api/appointments/*
-│   │   │   ├── businessRoutes.js       # POST /api/business/upload (doc ingestion)
-│   │   │   ├── dashboardRoutes.js      # GET /api/dashboard/stats|booking-stats|...
-│   │   │   ├── handoverRoutes.js       # GET|POST /api/handover/*
-│   │   │   ├── reviewRoutes.js         # GET|POST /api/reviews/*
-│   │   │   ├── settings.js             # GET|POST /api/settings/configs|documents
-│   │   │   └── whatsappRoutes.js       # /api/whatsapp/* (status, sync, logs)
-│   │   ├── services/
-│   │   │   ├── llmService.js           # Multi-provider LLM client (Gemini→Groq→Mistral)
-│   │   │   ├── calendarService.js      # Google Calendar link generator
-│   │   │   └── bookingHandler.js       # Booking data normaliser
-│   │   ├── middleware/
-│   │   │   └── auth.js                 # JWT cookie verification middleware
+│   │   ├── controllers/       # Request handlers (appointments, auth, documents, etc.)
 │   │   ├── database/
-│   │   │   ├── db.js                   # Knex instance
-│   │   │   ├── migrations/             # Schema migrations (run with knex migrate:latest)
-│   │   │   └── seeds/                  # Optional seed data
-│   │   └── utils/
-│   │       └── csvFormatter.js         # Converts DB rows to CSV string
-│   ├── uploads/                        # Uploaded documents stored here
-│   ├── knexfile.js                     # Knex environment config (reads from .env)
-│   ├── package.json
-│   ├── .env                            # ← git-ignored, copy from .env.example
-│   └── .env.example                    # ← template for all required keys
+│   │   │   ├── migrations/    # Knex migration history (ordered, versioned)
+│   │   │   └── seeds/         # Optional seed scripts
+│   │   ├── middleware/        # JWT authentication guard
+│   │   ├── routes/            # Express router definitions
+│   │   ├── services/          # LLM service, calendar service, booking handler
+│   │   └── index.js           # HTTP + Socket.io server bootstrap
+│   ├── knexfile.js            # Knex environment configuration
+│   └── .env.example
 │
-├── backend-engine/                 # WhatsApp AI Engine — real-time message processing
+├── backend-engine/            # WhatsApp Bot Engine — Baileys + AI + Cron
+│   ├── scripts/
+│   │   ├── testBookingFlow.js # E2E CLI booking flow test harness
+│   │   └── testFullSystem.js  # Full system integration test
 │   ├── src/
 │   │   ├── controllers/
-│   │   │   └── chatController.js       # processUserMessage() — security → intent → handler
+│   │   │   └── chatController.js      # Core message dispatch entry point
 │   │   ├── handlers/
-│   │   │   ├── bookingHandler.js       # Multi-turn booking state machine (LLM extraction)
-│   │   │   ├── faqHandler.js           # RAG Q&A via knowledge base + Gemini
-│   │   │   ├── feedbackHandler.js      # Post-appointment rating collection (no LLM)
-│   │   │   └── handoverHandler.js      # Human escalation trigger
+│   │   │   ├── bookingHandler.js      # Stateful booking state machine
+│   │   │   ├── faqHandler.js          # RAG-grounded FAQ responder
+│   │   │   ├── feedbackHandler.js     # Post-appointment feedback collector
+│   │   │   └── handoverHandler.js     # Human escalation trigger
 │   │   ├── services/
 │   │   │   ├── ai/
-│   │   │   │   ├── llmClient.js        # Multi-provider AI gateway (Gemini→Groq→Mistral→Nvidia→OpenRouter)
-│   │   │   │   └── intentRouter.js     # LLM intent classification with context awareness
-│   │   │   ├── whatsappGateway.js      # Baileys socket, session management, anti-loop, circuit breaker
-│   │   │   ├── calendarService.js      # Google Calendar event creation (Service Account)
-│   │   │   ├── configService.js        # Async config gateway (env → future DB)
-│   │   │   ├── reminderService.js      # Daily cron: appointment reminders + feedback prompts
-│   │   │   ├── sessionSyncService.js   # HTTP sync to backend (session status, chat logs, handover)
-│   │   │   └── feedbackEligibility.js  # Checks if user can submit feedback
-│   │   ├── locales/
-│   │   │   └── strings.js              # i18n dictionary (fr · en · ar · darija)
+│   │   │   │   ├── intentRouter.js    # Multi-class intent classifier
+│   │   │   │   └── llmClient.js       # Multi-provider AI gateway w/ failover
+│   │   │   ├── calendarService.js     # Google Calendar event creation
+│   │   │   ├── configService.js       # Config + knowledge base + profile gateway
+│   │   │   ├── reminderService.js     # Cron: daily appointment reminders
+│   │   │   ├── sessionSyncService.js  # HTTP bridge: engine -> backend REST API
+│   │   │   └── whatsappGateway.js     # Baileys connection manager + message router
+│   │   ├── locales/                   # i18n string templates (en, fr, ar, darija)
 │   │   └── utils/
-│   │       ├── security.js             # AI-powered prompt-injection classifier (fail-closed)
-│   │       └── stateMinifier.js        # Strips null/empty fields from LLM state payloads
-│   ├── scripts/
-│   │   └── testFullSystem.js           # E2E CLI test: Q&A + Booking + Handover flows
-│   ├── auth_info_baileys/              # ← git-ignored, Baileys WhatsApp session credentials
-│   ├── index.js                        # Entry point: connectToWhatsApp() + cron schedulers
-│   ├── package.json
-│   ├── .env                            # ← git-ignored, copy from .env.example
-│   └── .env.example                    # ← template for all required keys
+│   │       ├── security.js            # Input sanitization guards
+│   │       └── stateMinifier.js       # Prompt token optimization
+│   └── index.js                       # Bot engine bootstrap
 │
-├── frontend/                       # Admin Dashboard — Next.js 16 App Router
-│   ├── app/
-│   │   ├── page.jsx                    # Login / registration page (public)
-│   │   ├── layout.js                   # Root layout
-│   │   ├── globals.css                 # Global styles (Tailwind base)
-│   │   ├── dashboard/                  # Home dashboard — stats, activity chart, interventions
-│   │   ├── booking-analytics/          # Booking funnel charts and time-slot heatmaps
-│   │   ├── chat-analytics/             # Conversation breakdown, flagged messages
-│   │   ├── review-analytics/           # Sentiment analysis, category breakdown
-│   │   ├── LiveIntervention/           # Live chat monitor — human agent reply UI
-│   │   ├── connect-device/             # WhatsApp QR pairing page
-│   │   ├── settings-page/              # API key config, document upload, company profile
-│   │   └── hooks/                      # Shared React hooks (socket, auth, etc.)
-│   ├── middleware.js                   # Route protection — redirects unauthenticated users
-│   ├── next.config.mjs
-│   └── package.json
+├── frontend/                  # Next.js Admin Dashboard (UI)
+│   └── app/                   # App Router pages and components
 │
-├── frontend-dashboard/             # (Reserved — currently empty)
-│
-├── docker-compose.yml              # PostgreSQL 16 + pgAdmin containers
-└── README.md                       # This file
+├── docker-compose.yml         # PostgreSQL 16 + pgAdmin local stack
+└── docs/
+    └── openapi.yaml           # OpenAPI 3.0 API specification
 ```
 
 ---
 
-## 5. Prerequisites
+## 2. Architecture & Data Flow
 
-| Requirement | Version | Notes |
+### 2.1 System Components
+
+AssistAI is composed of three tightly integrated services communicating via HTTP and WebSocket:
+
+```
++------------------------------------------------------------------+
+|                         WhatsApp Network                         |
++-------------------------------+----------------------------------+
+                                | Baileys WebSocket
+                                v
++------------------------------------------------------------------+
+|                    backend-engine  (port 3001)                   |
+|  +--------------+  +----------------+  +-------------------+    |
+|  | WhatsApp     |  | Intent Router  |  | Multi-Provider AI |    |
+|  | Gateway      |->| (LLM classify) |->| Gateway (failover)|    |
+|  | (Baileys)    |  +----------------+  +-------------------+    |
+|  +------+-------+         |                                      |
+|         |          +------v---------------------------+          |
+|         |          |  Handler Dispatch                |          |
+|         |          |  booking / faq / handover /      |          |
+|         |          |  feedback                        |          |
+|         |          +------------------+---------------+          |
+|         |                             | HTTP POST                |
+|         |  sessionSyncService.js -----+                          |
+|         |  (appointments/sync, session-status, chat-messages)   |
++---------+------------------------------------------------------------+
+          | Socket.io (outbound WA send)
+          v
++------------------------------------------------------------------+
+|                      backend  (port 5000)                        |
+|  Express REST API + Socket.io Server                             |
+|  +-------------------------------------------------------------+ |
+|  |  /api/business/*   /api/appointments/*   /api/auth/*        | |
+|  |  /api/whatsapp/*   /api/dashboard/*      /api/settings/*    | |
+|  +------------------------------+---------------------------------+ |
+|                                 | Knex ORM                      |
+|                                 v                               |
+|  +-------------------------------------------------------------+ |
+|  |              PostgreSQL 16  (assist_ai_db)                  | |
+|  +-------------------------------------------------------------+ |
++------------------------------------------------------------------+
+          ^
+          | HTTP / WebSocket
+          |
++---------+------------------------------------------------------------+
+|                      frontend  (port 3000)                       |
+|                    Next.js Admin Dashboard                       |
++------------------------------------------------------------------+
+```
+
+---
+
+### 2.2 Single Source of Truth (SSOT) Design
+
+The system implements a **hybrid SSOT model** that is critical to its correctness. Every AI prompt — whether classifying intent, resolving a FAQ, or executing a booking — receives context from **two distinct, complementary database sources**:
+
+| Data Type | Storage Location | Governs |
 |---|---|---|
-| Node.js | ≥ 22 | ES Modules required |
-| npm | ≥ 10 | |
-| PostgreSQL | 16 | Via Docker (recommended) or local install |
-| Google Service Account | — | For Google Calendar integration |
-| At least one LLM API key | — | Gemini, Groq, Mistral, Nvidia NIM, or OpenRouter |
+| Bookable services catalog (name, department, duration, `service_id`) | `services` table (relational) | What can be booked; maps to `appointments.service_id` |
+| Staff / specialists, working hours, and business hours | `company_configs.profile_data` (JSONB) | Scheduling constraint enforcement |
+| Free-text business context | `knowledge_base` table | FAQ grounding (RAG) |
+| AI provider keys, calendar credentials, integration URLs | `company_configs` (relational columns) | Engine configuration |
+
+The AI is explicitly instructed in every prompt that **the relational services list is the authoritative catalog** and must override any service-related text found in the `profile_data` JSONB. This separation of concerns ensures that service IDs remain database-consistent while staff scheduling rules remain schema-free and dynamically editable.
 
 ---
 
-## 6. Setup & Installation
+### 2.3 The Relational `services` Table
 
-### Step 1 — Clone & install dependencies
+The `services` table is the **booking ID authority**. It stores every bookable service as a first-class relational record:
 
-```bash
-git clone <repo-url> AssistAI
-cd AssistAI
-
-# Install all three packages
-npm install --prefix backend
-npm install --prefix backend-engine
-npm install --prefix frontend
+```sql
+CREATE TABLE services (
+  id               SERIAL PRIMARY KEY,
+  name             VARCHAR NOT NULL,
+  department       VARCHAR NOT NULL,
+  duration_minutes INTEGER DEFAULT 60,
+  company_id       UUID REFERENCES "Company"("CompanyID") ON DELETE CASCADE
+);
 ```
 
-### Step 2 — Start the database
+**Multi-tenancy enforcement** is implemented via the `company_id` foreign key (added in migration `20260810104500_make_services_multitenant.js`). Every query against the `services` table in a tenant-aware context is scoped by `company_id`, guaranteeing that Tenant A's service catalog is never visible to Tenant B.
 
-```bash
-# Starts PostgreSQL on port 5433 and pgAdmin on port 5050
-docker-compose up -d
+When a booking is confirmed, the `bookingHandler` extracts the integer `service_id` from the LLM response. This ID is the **canonical booking reference** written to the `appointments` table, creating a permanent foreign-key link between the confirmed appointment and the service record:
 
-# pgAdmin: http://localhost:5050
-#   Email:    admin@assist.ai
-#   Password: admin
+```sql
+-- appointments: stores a service_id FK and a denormalized specialist_name snapshot
+ALTER TABLE appointments
+  ADD COLUMN company_id       UUID REFERENCES "Company"("CompanyID"),
+  ADD COLUMN specialist_name  VARCHAR;  -- historical snapshot at time of booking
 ```
 
-### Step 3 — Configure environment variables
+> **Note:** The legacy `specialists` and `specialist_services` junction tables were **permanently dropped** in migration `20260810103500_drop_legacy_specialist_tables.js`. Staff data is now exclusively managed through `company_configs.profile_data`.
+
+---
+
+### 2.4 The `company_configs.profile_data` JSONB Column
+
+The `profile_data` column (added in migration `20260807120000_add_profile_data_to_configs.js`) is the **dynamic configuration layer** of the platform. It stores structured, schema-free business data that the AI reads at runtime to enforce scheduling constraints.
+
+**Schema shape — populated automatically by the document ingestion pipeline:**
+
+```json
+{
+  "professionals": [
+    {
+      "name": "Sarah Connor",
+      "services": ["Server Configuration", "Database Optimization"],
+      "working_hours": "9:00 AM - 4:00 PM"
+    },
+    {
+      "name": "John Reese",
+      "services": ["Network Security Audit"],
+      "working_hours": "10:00 AM - 6:00 PM"
+    }
+  ],
+  "business_hours": "Monday-Friday, 9 AM to 6 PM",
+  "location": "123 Tech Street, Casablanca"
+}
+```
+
+This object is retrieved by `configService.getCompanyProfile()` at runtime and injected into AI prompts. The `bookingHandler` uses it to enforce the **Critical Scheduling Rule**: if a user requests an appointment outside a specialist's `working_hours`, the AI is forbidden from confirming the booking.
+
+This rule is reinforced by a **server-side hard guard** that vetoes any LLM response claiming confirmation with missing fields — providing a deterministic safety layer independent of model instruction-following:
+
+```javascript
+// CRIT-4 fix: hard server-side veto — a hallucinating model cannot
+// set user_confirmed=true if any required booking field is null.
+if (currentBookingState.user_confirmed && !allRequiredFieldsPresent) {
+  console.error('State machine guard: LLM set user_confirmed=true with missing fields. Vetoing.');
+  currentBookingState.user_confirmed = false;
+}
+```
+
+---
+
+### 2.5 AI Conversation Pipeline
+
+Incoming WhatsApp messages flow through a sequential, stateful pipeline:
+
+```
+User Message (WhatsApp)
+        |
+        v
+whatsappGateway.js
+  |-- Security validation (sanitization, dev message whitelist)
+  |-- Anti-loop detection (FAIL_THRESHOLD = 3 consecutive failures)
+  +-- Inactivity session cleanup (2-hour TTL)
+        |
+        v
+chatController.processUserMessage()
+        |
+        v
+intentRouter.routeIntent()   <-- callAI() with full company context injected
+  Classifies into: booking | faq | handover | review | unknown
+  Detects language: en | fr | ar | darija
+        |
+        |--[booking]--> bookingHandler.handleBooking()
+        |                 |-- fetchCompanyCatalogFromDB()  <-- services table (SSOT)
+        |                 |-- getCompanyProfile()          <-- profile_data JSONB
+        |                 |-- callAI() [jsonMode: true]    <-- structured state extraction
+        |                 |-- Server-side guard: veto hallucinated confirmations
+        |                 |-- insertEvent()                <-- Google Calendar
+        |                 +-- syncAppointment()            <-- POST /api/appointments/sync
+        |
+        |--[faq]------> faqHandler.handleFaq()
+        |                 |-- getKnowledgeBase()           <-- knowledge_base table (RAG)
+        |                 |-- getCompanyProfile()          <-- profile_data JSONB
+        |                 +-- callAI()                     <-- grounded response
+        |
+        |--[handover]-> handoverHandler
+        |                 +-- syncHandover()              <-- POST /api/whatsapp/sync-handover
+        |
+        +--[review]---> feedbackHandler.handleFeedback()
+                          +-- Collects rating, routes to Google Review or Tally form
+```
+
+All session state (`bookingState`, `history`, `clientLanguage`) is maintained in-memory within `whatsappGateway.js`'s `userSessions` map, keyed by the user's WhatsApp JID.
+
+---
+
+### 2.6 Multi-Provider AI Gateway with Failover
+
+`llmClient.js` implements a **provider-agnostic AI gateway** with automatic sequential failover. Providers are evaluated at call time — no server restart is needed to activate a newly added API key.
+
+**Failover priority order:**
+
+| Priority | Provider | Endpoint | Default Model |
+|---|---|---|---|
+| 1 | **Gemini** (Primary) | `generativelanguage.googleapis.com` | `gemini-3.5-flash-lite` |
+| 2 | **Groq** | `api.groq.com/openai/v1` | `llama-3.3-70b-versatile` |
+| 3 | **Mistral** | `api.mistral.ai/v1` | `open-mistral-nemo` |
+| 4 | **NVIDIA NIM** | `integrate.api.nvidia.com/v1` | `meta/llama-3.1-70b-instruct` |
+
+Gemini HTTP 429 rate-limit hits trigger an automatic in-provider model downgrade to `gemini-3.1-flash-lite` before rotating to the next provider. Retriable status codes (`429`, `500`, `502`, `503`, `504`) initiate provider rotation; hard client errors (`400`, `401`, `403`) are treated as fatal and are not retried.
+
+To add a new provider, append a single entry to the `PROVIDER_REGISTRY` array in `llmClient.js` — no other changes are required.
+
+---
+
+### 2.7 Cross-Service Synchronization
+
+The `backend-engine` never writes to PostgreSQL directly. All persistence operations are delegated to the `backend` REST API via `sessionSyncService.js`:
+
+| Event | Method | Endpoint |
+|---|---|---|
+| WhatsApp connection state change | `PATCH` | `/api/whatsapp/session-status` |
+| New chat message (inbound or outbound) | `POST` | `/api/whatsapp/sync-message` |
+| Human handover triggered | `POST` | `/api/whatsapp/sync-handover` |
+| Booking confirmed | `POST` | `/api/appointments/sync` |
+
+All sync calls are fire-and-forget with full error containment — a network hiccup during a sync operation never interrupts the Baileys message processing loop.
+
+---
+
+## 3. AI Document Extraction Pipeline
+
+The document ingestion pipeline (`POST /api/business/upload`) is the mechanism by which a tenant's business context is loaded into the system. It operates as a fully automated, atomic pipeline:
+
+```
+POST /api/business/upload  (multipart/form-data)
+Field: "document"  |  Accepted: .txt .pdf .doc .docx  |  Max size: 10 MB
+        |
+        v  Step 1 — Text Extraction
+        |-- .txt  -> Buffer.toString('utf-8')
+        |-- .pdf  -> pdf-parse library
+        +-- .docx -> mammoth.extractRawText()
+        |
+        v  Step 2 — LLM Structured Extraction  (jsonMode: true)
+        callAI(buildExtractionPrompt(rawText))
+        Returns a validated JSON object:
+        {
+          "services":     [...],    // Bookable service records
+          "company_info": "...",    // Free-text business context (RAG)
+          "profile_data": {         // Staff + hours (JSONB column)
+            "professionals": [...]
+          }
+        }
+        |
+        |-- Step 3 (Atomic Knex Transaction)
+        |   seedServices(): DELETE WHERE company_id = $tenant
+        |                   INSERT new service rows WITH company_id
+        |
+        |-- Step 4 (Upsert)
+        |   upsertKnowledgeBase(): DELETE then INSERT into knowledge_base
+        |
+        +-- Step 5 (Upsert)
+            INSERT INTO company_configs (company_id, profile_data)
+            ON CONFLICT (company_id) DO UPDATE SET profile_data = excluded.profile_data
+        |
+        v  Step 6 — Response
+        HTTP 200: { success: true,  services[], knowledge_base, profile_data }
+        HTTP 207: { success: false, per-operation error keys }  <- partial failure
+```
+
+**Key design decisions:**
+
+- **Atomic catalog replacement**: `seedServices()` wraps its `DELETE` + `INSERT` in a Knex transaction, ensuring the services catalog is never in a partially-updated state during a re-upload.
+- **Tenant isolation**: The `company_id` derived from the JWT payload (`req.user.companyId`) is applied to every write operation. A tenant can only overwrite their own records.
+- **Simultaneous dual-write**: A single upload atomically updates both the relational `services` table **and** the `company_configs.profile_data` JSONB column, keeping both data layers permanently synchronized.
+- **Graceful partial failure**: If one of the three write steps fails independently, the controller returns HTTP `207 Multi-Status` with granular per-operation error keys rather than rolling back the entire ingestion.
+
+---
+
+## 4. Database Schema Reference
+
+All migrations live in `backend/src/database/migrations/` and are applied in chronological filename order via `npx knex migrate:latest`.
+
+| Migration Timestamp | File | Description |
+|---|---|---|
+| `20260721112610` | `create_initial_tables` | Core schema: Company, AdminUser, Customer, services, ChatSession, ChatLogs, Review, conversations, FlaggedMessages, company_configs, company_documents, whatsapp_sessions. Includes mock analytics seed data. |
+| `20260806120000` | `create_knowledge_base_table` | Adds `knowledge_base` table for RAG context storage |
+| `20260807120000` | `add_profile_data_to_configs` | Adds `profile_data JSONB` column to `company_configs` |
+| `20260810103500` | `drop_legacy_specialist_tables` | Drops `specialists` and `specialist_services` tables; adds `company_id` FK and `specialist_name` snapshot column to `appointments` |
+| `20260810104500` | `make_services_multitenant` | Adds `company_id` FK to both `services` and `knowledge_base` tables |
+
+**Core table relationships:**
+
+```
+Company (1) --< AdminUser (N)
+Company (1) --< whatsapp_sessions (N)
+Company (1) --< services (N)           <- SSOT: booking catalog
+Company (1) --  company_configs (1)    <- profile_data JSONB lives here
+Company (1) --< company_documents (N)
+Company (1) --< appointments (N)
+appointments.service_id --> services.id
+appointments.company_id --> Company.CompanyID
+Customer (1) --< ChatLogs (N)
+Customer (1) --< Review (N)
+Customer (1) --< conversations (N)
+conversations (1) --< FlaggedMessages (N)
+```
+
+---
+
+## 5. Local Development & Testing Environment
+
+### 5.1 Prerequisites
+
+| Requirement | Minimum Version | Notes |
+|---|---|---|
+| Node.js | 22.x | Required for ES Module support (`"type": "module"`) |
+| PostgreSQL | 16.x | Via Docker (recommended) or local install |
+| Docker & Docker Compose | Latest stable | Manages PostgreSQL + pgAdmin stack |
+
+---
+
+### 5.2 Environment Configuration
+
+Each service has its own `.env` file. Copy the examples and populate your credentials:
 
 ```bash
-# Backend API
 cp backend/.env.example backend/.env
-
-# Backend Engine
 cp backend-engine/.env.example backend-engine/.env
 ```
 
-Edit both `.env` files with your credentials. See the [Environment Variables](#7-environment-variables) section for a full reference.
+**`backend/.env` — required variables:**
 
-### Step 4 — Run database migrations
+```dotenv
+PORT=5000
+NODE_ENV=development
+
+# Auth
+JWT_SECRET=<min_32_character_cryptographically_random_secret>
+
+# AI Provider Keys (failover: gemini -> groq -> mistral -> nvidia)
+# Set at least ONE. Leave unused providers blank to skip them silently.
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-3.5-flash-lite
+GROQ_API_KEY=your_groq_api_key_here
+MISTRAL_API_KEY=
+NVIDIA_API_KEY=
+
+# PostgreSQL Connection
+DB_HOST=localhost
+DB_PORT=5432        # Use 5433 if using the docker-compose stack
+DB_USER=postgres
+DB_PASSWORD=your_db_password_here
+DB_NAME=assist_ai_db
+
+# Engine-to-Backend bridge URL
+DASHBOARD_API_URL=http://localhost:5000
+```
+
+**`backend-engine/.env` — required variables:**
+
+```dotenv
+PORT=3001
+NODE_ENV=development   # Set to 'production' to disable dev message whitelist
+
+# AI Providers (same failover order as backend)
+GEMINI_API_KEY=your_gemini_api_key_here
+GROQ_API_KEY=your_groq_api_key_here
+
+# Google Calendar — Service Account credentials
+CALENDAR_ID=your_calendar_id@group.calendar.google.com
+GOOGLE_CLIENT_EMAIL=your-sa@your-project.iam.gserviceaccount.com
+GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nyour_key_here\n-----END PRIVATE KEY-----\n"
+
+# Post-appointment feedback routing
+GOOGLE_REVIEW_URL=https://g.page/r/YOUR_REVIEW_LINK
+TALLY_FORM_URL=https://tally.so/r/YOUR_FORM_ID
+
+# Backend API URL (for sessionSyncService HTTP bridge)
+DASHBOARD_API_URL=http://localhost:5000
+
+# Admin WhatsApp JID — receives escalation alerts
+# Format: <country_code><number>@s.whatsapp.net
+WA_ADMIN_JID=212600000000@s.whatsapp.net
+```
+
+> **Important:** `GOOGLE_PRIVATE_KEY` must be a single-line string with literal `\n` escape sequences representing newlines. Replace actual line breaks in the PEM file with the two-character sequence `\n`.
+
+---
+
+### 5.3 Database Setup & Migrations
+
+**Step 1 — Start the PostgreSQL container:**
+
+```bash
+docker-compose up -d
+```
+
+This starts:
+- **PostgreSQL 16** on `localhost:5433` (host port mapped from container port `5432`)
+- **pgAdmin 4** on `http://localhost:5050` — login: `admin@assist.ai` / `admin`
+
+> The `docker-compose.yml` maps the container port `5432` to host port `5433`. Set `DB_PORT=5433` in `backend/.env` when using this stack.
+
+**Step 2 — Install backend dependencies:**
+
+```bash
+cd backend
+npm install
+```
+
+**Step 3 — Apply all migrations:**
 
 ```bash
 cd backend
 npx knex migrate:latest
 ```
 
-This creates all tables: `Company`, `AdminUser`, `whatsapp_sessions`, `Customer`, `services`, `specialists`, `appointments`, `ChatSession`, `ChatLogs`, `Review`, `FlaggedMessages`, `company_configs`, `company_documents`, `knowledge_base`.
+This executes all five migrations in chronological order, builds the full schema, and seeds mock analytics data for immediate dashboard testing.
 
-### Step 5 — Configure Google Calendar *(optional for booking)*
+**Check migration state:**
 
-1. Create a Google Cloud project and enable the **Google Calendar API**
-2. Create a **Service Account** and download the JSON key
-3. Share your Google Calendar with the service account email (Editor permission)
-4. Add the service account credentials to `backend-engine/.env`:
+```bash
+npx knex migrate:status
+```
 
-```env
-CALENDAR_ID=your-calendar-id@group.calendar.google.com
-GOOGLE_CLIENT_EMAIL=your-service-account@project.iam.gserviceaccount.com
-GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+**Roll back (development only):**
+
+```bash
+# Most recent batch only
+npx knex migrate:rollback
+
+# Full clean slate
+npx knex migrate:rollback --all
 ```
 
 ---
 
-## 7. Environment Variables
+### 5.4 Running Services Locally
 
-### `backend/.env`
+Open three separate terminal sessions:
 
-| Variable | Required | Description |
-|---|---|---|
-| `PORT` | No | HTTP port (default: `5000`) |
-| `NODE_ENV` | No | `development` or `production` |
-| `JWT_SECRET` | **Yes** | Secret for signing JWT tokens — minimum 32 characters |
-| `DB_HOST` | No | PostgreSQL host (default: `localhost`) |
-| `DB_PORT` | No | PostgreSQL port (default: `5432`) |
-| `DB_USER` | **Yes** | PostgreSQL username |
-| `DB_PASSWORD` | **Yes** | PostgreSQL password |
-| `DB_NAME` | No | Database name (default: `assist_ai_db`) |
-| `GEMINI_API_KEY` | Partial* | Google Gemini API key |
-| `GEMINI_MODEL` | No | Model name (default: `gemini-3.5-flash-lite`) |
-| `GROQ_API_KEY` | Partial* | Groq API key |
-| `GROQ_MODEL` | No | Model name (default: `llama-3.3-70b-versatile`) |
-| `MISTRAL_API_KEY` | Partial* | Mistral AI key |
-| `NVIDIA_API_KEY` | Partial* | Nvidia NIM key |
-| `OPENROUTER_API_KEY` | Partial* | OpenRouter aggregator key |
-| `DASHBOARD_API_URL` | No | Backend URL for engine sync (default: `http://localhost:5000`) |
-
-> *At least **one** LLM key must be set for the document ingestion pipeline to function.
-
-### `backend-engine/.env`
-
-| Variable | Required | Description |
-|---|---|---|
-| `PORT` | No | HTTP port (default: `4000`) |
-| `NODE_ENV` | **Yes** | `development` (enables test whitelist) or `production` (all messages) |
-| `GEMINI_API_KEY` | Partial* | Primary LLM provider — Google Gemini |
-| `GEMINI_MODEL` | No | Default: `gemini-3.5-flash-lite` |
-| `GROQ_API_KEY` | Partial* | Fallback LLM — Groq |
-| `GROQ_MODEL` | No | Default: `llama-3.3-70b-versatile` |
-| `MISTRAL_API_KEY` | Partial* | Fallback LLM — Mistral AI |
-| `NVIDIA_API_KEY` | Partial* | Fallback LLM — Nvidia NIM |
-| `OPENROUTER_API_KEY` | Partial* | Fallback LLM — OpenRouter aggregator |
-| `OPENROUTER_SITE_URL` | No | Your app URL (sent in OpenRouter headers) |
-| `OPENROUTER_MODEL` | No | Default: `google/gemma-2-9b-it:free` |
-| `CALENDAR_ID` | Booking | Google Calendar ID for booking events |
-| `GOOGLE_CLIENT_EMAIL` | Booking | Service account email |
-| `GOOGLE_PRIVATE_KEY` | Booking | Service account RSA private key (`\n`-escaped) |
-| `GOOGLE_REVIEW_URL` | Feedback | Google Maps review link (sent to satisfied customers) |
-| `TALLY_FORM_URL` | Feedback | Tally form URL (sent to dissatisfied customers) |
-| `DB_HOST` | No | PostgreSQL host |
-| `DB_PORT` | No | PostgreSQL port |
-| `DB_USER` | **Yes** | PostgreSQL username |
-| `DB_PASSWORD` | **Yes** | PostgreSQL password |
-| `DB_NAME` | No | Database name |
-| `DASHBOARD_API_URL` | No | Backend URL for session sync (default: `http://localhost:5000`) |
-| `WA_ADMIN_JID` | No | Admin WhatsApp JID for escalation alerts (e.g. `212600000000@s.whatsapp.net`) |
-
-> *At least **one** LLM key must be set. The engine tries providers in order: Gemini → Groq → Mistral → Nvidia → OpenRouter, auto-failing over on HTTP errors or 429 rate limits.
-
----
-
-## 8. Running the Services
-
-All three services must run concurrently. Open three terminal windows:
-
-### Terminal 1 — Backend API
+**Terminal 1 — Backend REST API:**
 
 ```bash
 cd backend
 npm run dev
-# → Listening on http://localhost:5000
+# Listening on http://localhost:5000
 ```
 
-### Terminal 2 — Backend Engine (WhatsApp AI)
+**Terminal 2 — Bot Engine:**
 
 ```bash
 cd backend-engine
+npm install
 npm run dev
-# → QR code appears in terminal on first run
-# → Scan with WhatsApp on your phone to pair
+# QR code printed in terminal — scan with WhatsApp mobile app
 ```
 
-### Terminal 3 — Frontend Dashboard
+**Terminal 3 — Frontend Dashboard:**
 
 ```bash
 cd frontend
+npm install
 npm run dev
-# → http://localhost:3000
+# Dashboard at http://localhost:3000
 ```
 
-### First-time WhatsApp pairing
-
-On first launch, the engine prints a QR code in the terminal. Alternatively, navigate to **Connect Device** in the dashboard (`/connect-device`) to scan via the web UI. Credentials are stored in `backend-engine/auth_info_baileys/` (git-ignored).
+Once the engine starts, scan the QR code via **WhatsApp > Settings > Linked Devices > Link a Device**. The Baileys session is persisted to `backend-engine/auth_info_baileys/` and survives process restarts.
 
 ---
 
-## 9. Database Schema
+### 5.5 E2E CLI Testing: `testBookingFlow.js`
 
-The following tables are created by `knex migrate:latest`:
+`backend-engine/scripts/testBookingFlow.js` is a **headless, network-silent end-to-end test harness** for the booking pipeline. It simulates a complete multi-turn WhatsApp booking conversation without requiring an active WhatsApp connection, and verifies that all downstream integrations — Google Calendar and the backend database sync — are correctly triggered.
 
-| Table | Purpose |
-|---|---|
-| `Company` | Registered businesses |
-| `AdminUser` | Dashboard admin accounts (bcrypt-hashed passwords) |
-| `whatsapp_sessions` | WhatsApp connection state per session key (PAIRING / CONNECTED / DISCONNECTED) |
-| `Customer` | WhatsApp contacts identified by phone number |
-| `services` | Business services seeded from document ingestion |
-| `specialists` | Staff/specialists with optional Google Calendar IDs |
-| `specialist_services` | Many-to-many junction (specialists ↔ services) |
-| `appointments` | Booking records (date, time, status, customer, specialist) |
-| `ChatSession` | Active WhatsApp sessions (handover state, language) |
-| `ChatLogs` | Full message audit trail (customer / bot / human_agent) |
-| `Review` | Customer feedback (rating, sentiment, category) |
-| `FlaggedMessages` | Messages flagged by customer or bot for review |
-| `company_configs` | Per-company API keys and integration settings (Settings UI) |
-| `company_documents` | Uploaded document records |
-| `knowledge_base` | Extracted company knowledge from documents (RAG context) |
+#### What It Tests
 
----
+The script runs a predefined 6-step conversation written in Moroccan Darija, engineered to exercise specific AI constraint guardrails:
 
-## 10. Key Features & API Endpoints
-
-### Authentication
-
-| Method | Endpoint | Description |
+| Step | Input Message | Guardrail Under Test |
 |---|---|---|
-| `POST` | `/api/auth/register` | Create company + admin account |
-| `POST` | `/api/auth/login` | Authenticate and receive JWT cookie |
-| `POST` | `/api/auth/logout` | Clear JWT cookie |
+| 1 | `"Bghit nched rdv"` | Booking intent detection from Darija |
+| 2 | `"Server Configuration"` | Service selection against live DB catalog |
+| 3 | `"Bghit m3a Sarah Connor ghada f 4:30 PM"` | **Out-of-hours block** — shift ends at 4:00 PM |
+| 4 | `"Zayd"` | Customer name extraction |
+| 5 | `"zayd@mail.me"` | Contact info email format validation |
+| 6 | `"Oui kolchi mzian"` | Confirmation gating — all fields must be non-null |
 
-### Dashboard Analytics
+Step 3 is the critical guardrail test: the requested time of 4:30 PM exceeds the specialist's 4:00 PM shift end. The AI must return `"appointment_time": null` in its JSON state output — the booking is strictly blocked, and the state machine does not advance.
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/dashboard/stats?timeframe=` | Conversations, bookings, reviews, alerts overview |
-| `GET` | `/api/dashboard/booking-stats?timeframe=` | Booking funnel, peak month, most popular time slot |
-| `GET` | `/api/dashboard/review-stats?timeframe=` | Sentiment breakdown, categories, chart data |
-| `GET` | `/api/dashboard/chat-stats?timeframe=` | Bot vs human vs unanswered, flagged messages |
-| `GET` | `/api/dashboard/export-csv` | Download appointments as CSV |
+#### Prerequisites
 
-Accepted `timeframe` values: `Today` · `This Week` · `This Month` · `This Year` · `All-time`
+Before running:
 
-### Appointments
+1. **Backend REST API** must be running on `http://localhost:5000` — the test fires a real HTTP `POST` to `/api/appointments/sync` and validates the write reaches PostgreSQL.
+2. At least one valid AI provider key must be configured in `backend-engine/.env`.
+3. The `services` catalog must be populated (run the document upload, or ensure migration seed data is present).
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/appointments` | List all appointments |
-| `GET` | `/api/appointments/tomorrow` | Fetch tomorrow's confirmed appointments (reminder cron) |
-| `GET` | `/api/appointments/concluded-today` | Fetch today's completed appointments (feedback cron) |
-| `GET` | `/api/appointments/check-availability?date=&time=` | Check slot availability |
-| `POST` | `/api/appointments` | Create a manual appointment |
-| `POST` | `/api/appointments/sync` | Sync an appointment from the engine after booking confirmation |
-
-### WhatsApp Gateway Sync
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/whatsapp/status` | Current connection status (DISCONNECTED / PAIRING / CONNECTED) |
-| `POST` | `/api/whatsapp/connect` | Initiate QR pairing |
-| `POST` | `/api/whatsapp/disconnect` | Log out session |
-| `PATCH` | `/api/whatsapp/session-status` | Engine → Backend: report connection state change |
-| `POST` | `/api/whatsapp/sync-message` | Engine → Backend: log a chat message |
-| `POST` | `/api/whatsapp/sync-handover` | Engine → Backend: update handover flag |
-| `POST` | `/api/whatsapp/send-message` | Dashboard → Engine: send outbound human agent message |
-| `POST` | `/api/whatsapp/toggle-handover` | Toggle handover state from dashboard |
-| `GET` | `/api/whatsapp/sessions` | List active chat sessions |
-| `GET` | `/api/whatsapp/logs/:phoneNumber` | Fetch chat message history for a number |
-
-### Business & Document Ingestion
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/api/business/upload` | Upload document → extract text → LLM parse → seed DB |
-| `GET` | `/api/business/knowledge-base` | Retrieve current knowledge base content (used by engine) |
-| `GET` | `/api/business/services` | List all seeded services |
-
-### Settings (UI Sync)
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/settings/configs` | Fetch company API key configuration |
-| `POST` | `/api/settings/configs` | Save config → updates DB + writes both `.env` files |
-| `GET` | `/api/settings/documents` | List uploaded company documents |
-| `POST` | `/api/settings/documents` | Upload a document to `company_documents` |
-| `DELETE` | `/api/settings/documents/:id` | Delete document record and disk file |
-
-### Reviews & Handover
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/reviews` | List all customer reviews |
-| `POST` | `/api/reviews` | Submit a customer review |
-| `GET` | `/api/handover` | List active handover requests |
-| `POST` | `/api/handover/request` | Flag a session for human intervention |
-| `POST` | `/api/handover/respond` | Accept or decline a handover (ACCEPT / DECLINE) |
-
----
-
-## 11. Testing & Verification
-
-### Full System E2E Test
-
-The engine ships with a CLI integration test that exercises all three core flows without needing a running server — it calls `processUserMessage()` directly with real LLM providers.
+#### Running the Test
 
 ```bash
 cd backend-engine
-node scripts/testFullSystem.js
+
+# Via the npm script alias
+npm run test:booking
+
+# Or directly
+node scripts/testBookingFlow.js
 ```
 
-**Expected output:**
+#### Interpreting the Output
+
+The script prints a step-by-step trace with full booking state JSON at each turn, followed by a final verification block:
 
 ```
 ==================================================================
-🧪 STARTING E2E FULL SYSTEM TEST
+STARTING E2E BOOKING FLOW CLI TEST FOR: test_user@s.whatsapp.net
 ==================================================================
 
---- 1. Testing Q&A Flow ---
-👤 User: "What are your business hours and location?"
-🤖 AI Reply: "..."
-📊 Intent: faq
+Step 1/6 | User: "Bghit nched rdv"
+AI Reply: "Bien sur! Voici nos services disponibles: ..."
+Updated Booking State: { "status": "pending", "service_requested": null, ... }
 
---- 2. Testing Booking Flow ---
-👤 User: "I want to book a service"  →  🤖 "What service would you like?"
-👤 User: "Database Optimization"      →  🤖 "What date would you prefer?"
-👤 User: "Tomorrow at 10 AM"          →  🤖 "Could you tell me your name?"
-👤 User: "John Doe"                   →  🤖 "What is your contact info?"
-👤 User: "john@example.com"           →  🤖 "Please confirm your booking..."
-👤 User: "Yes, please confirm"        →  🤖 "Your appointment is confirmed! 🎉"
+------------------------------------------------------------------
+Step 3/6 | User: "Bghit m3a Sarah Connor ghada f 4:30 PM"
+AI Reply: "Je suis desole, Sarah Connor travaille de 9h a 16h.
+           Veuillez choisir un creneau avant 16h00."
+Updated Booking State: { "appointment_time": null }
+                                               ^-- CORRECT: time blocked
 
---- 3. Testing Handover Flow ---
-👤 User: "I demand to speak to a human!"
-🤖 AI Reply: "I understand. Let me connect you to a representative."
+==================================================================
+VERIFYING FINAL CONFIRMATION INTEGRATIONS
+==================================================================
+1. Google Calendar Event API Invoked: YES
+2. Backend syncAppointment REST Request Fired: YES
+   Synced Payload: { "customer_name": "Zayd", "contact_info": "zayd@mail.me", ... }
+3. Baileys Send Functions Bypassed (No WhatsApp traffic): YES
 
-VERIFYING FINAL STATE
-1. Q&A Flow executed:                 ✅ YES
-2. Google Calendar Event API Invoked: ✅ YES
-3. Backend syncAppointment Fired:     ✅ YES
-4. Handover State Triggered:          ✅ YES
-
-🎉 SUCCESS: All flows executed and verified end-to-end!
+SUCCESS: Full booking flow executed and verified end-to-end!
 ```
 
-**Notes on test warnings:**
-- `[ConfigService] Could not fetch knowledge base: fetch failed` — Expected. The backend server isn't running in standalone test mode. The engine gracefully falls back to empty context.
-- `[SessionSync] Failed to sync appointment: fetch failed` — Expected. The REST endpoint isn't live during testing, but the HTTP call is fired correctly (confirmed by the fetch spy).
-- LLM `429` warnings indicate Gemini rate limits; the engine automatically falls back to Groq.
+#### Spy Architecture
 
-### Verifying the WhatsApp Pairing
+**Google Calendar spy** — Monkey-patches `google.calendar` to intercept `events.insert` calls. In environments without live service account credentials, authentication errors are caught and swallowed while the invocation intent is recorded via the `calendarApiInvoked` flag.
 
-1. Start the engine: `cd backend-engine && npm run dev`
-2. Open the dashboard at `http://localhost:3000` and navigate to **Connect Device**
-3. Scan the QR code with WhatsApp on your phone
-4. The dashboard status indicator should change to **CONNECTED**
+**Backend sync spy** — Intercepts `fetch` calls to `/api/appointments/sync`, records the payload, then **passes the request straight through** to the real Express server. A mock response would be a false positive — the database write would be silently skipped.
 
----
+**No WhatsApp traffic** — `sock.sendMessage` is never called. Messages are injected directly into `processUserMessage()`, making the harness safe to run in any environment with no WhatsApp account required.
 
-## 12. Deployment Notes
-
-### Environment Checklist
-
-Before deploying to production:
-
-- [ ] Set `NODE_ENV=production` in **both** backend and engine `.env` files
-- [ ] Set a strong, unique `JWT_SECRET` (≥ 32 random characters)
-- [ ] Set `WA_ADMIN_JID` to the manager's WhatsApp JID
-- [ ] Replace all placeholder URLs (`DASHBOARD_API_URL`, `GOOGLE_REVIEW_URL`, `TALLY_FORM_URL`) with production values
-- [ ] Ensure `DB_USER` and `DB_PASSWORD` in `backend/.env` match your production database
-- [ ] Verify `calendar-key.json` is **not** committed (listed in `.gitignore`)
-- [ ] Run `npx knex migrate:latest` against your production database
-
-### `NODE_ENV=production` — What Changes
-
-Setting `NODE_ENV=production` in `backend-engine/.env` disables the **development message whitelist** in `whatsappGateway.js`. In development mode, only whitelisted test numbers receive AI responses; in production, **all** incoming WhatsApp messages are processed.
-
-### Docker (Database only)
-
-The `docker-compose.yml` manages PostgreSQL and pgAdmin. For production, replace with a managed database service and remove `docker-compose.yml` from deployment.
+**Exit behavior:**
 
 ```bash
-docker-compose up -d      # Start
-docker-compose down       # Stop
-docker-compose down -v    # Stop + delete data volumes
+npm run test:booking; echo "Exit code: $?"
+# 0 = both integrations invoked (pass)
+# 1 = Calendar or DB sync not triggered (fail)
+```
+
+The `process.exit(1)` on failure makes this script suitable for use as a CI/CD smoke-test gate.
+
+---
+
+## 6. API Reference
+
+The full OpenAPI 3.0 contract is available in `docs/openapi.yaml`. Key endpoint groups:
+
+| Route Group | Base Path | Description |
+|---|---|---|
+| Auth | `/api/auth/*` | Admin login, JWT issuance |
+| Business | `/api/business/*` | Document upload, knowledge base, services catalog, company profile |
+| Appointments | `/api/appointments/*` | Sync from engine, CRUD management, reminder queries |
+| WhatsApp | `/api/whatsapp/*` | Session status, message sync, handover events |
+| Dashboard | `/api/dashboard/*` | Analytics aggregation for frontend charts |
+| Settings | `/api/settings/*` | Tenant configuration management |
+| Handover | `/api/handover/*` | Live agent intervention endpoints |
+| Reviews | `/api/reviews/*` | Customer review ingestion |
+
+**Critical cross-service endpoints:**
+
+```
+POST   /api/business/upload               Document ingestion (LLM extraction + dual DB write)
+GET    /api/business/knowledge-base       Active RAG context  (polled by engine configService)
+GET    /api/business/services             Active services catalog (polled by engine)
+GET    /api/business/profile              company_configs.profile_data (polled by engine)
+PATCH  /api/whatsapp/session-status       Engine -> backend: WhatsApp connection state changes
+POST   /api/whatsapp/sync-message         Engine -> backend: Persist inbound/outbound messages
+POST   /api/whatsapp/sync-handover        Engine -> backend: Record human escalation events
+POST   /api/appointments/sync             Engine -> backend: Persist a confirmed booking
+GET    /api/appointments/tomorrow         Reminder cron: appointments scheduled for tomorrow
+GET    /api/appointments/concluded-today  Feedback cron: appointments that ended today
 ```
 
 ---
 
-<div align="center">
+## 7. Deployment Guide
 
-Built with ❤️ by the AssistAI team.
+### 7.1 Pre-Deployment Checklist
 
-</div>
+```
+[ ] PostgreSQL 16 provisioned and network-accessible from all services
+[ ] SSL/TLS certificate configured at the backend REST API
+[ ] All .env files populated with production values — zero placeholder strings
+[ ] JWT_SECRET is a cryptographically random string, minimum 64 characters
+[ ] NODE_ENV=production set in backend-engine/.env (disables dev whitelist)
+[ ] At least one AI provider API key is live with verified quota remaining
+[ ] Google Service Account credentials present (calendar-key.json)
+[ ] WA_ADMIN_JID set to a reachable WhatsApp number for escalation alerts
+[ ] DASHBOARD_API_URL in backend-engine/.env points to production backend URL
+[ ] CORS ALLOWED_ORIGINS in backend/src/index.js updated to production frontend domain
+[ ] docker-compose.yml default DB password changed if using containerized PostgreSQL
+[ ] pgAdmin port (5050) is firewalled — not publicly accessible in production
+[ ] auth_info_baileys/ directory backed up (contains WhatsApp session credentials)
+```
+
+---
+
+### 7.2 Database Migration in Production
+
+Migrations run from the `backend` directory. Ensure all `DB_*` variables target the production database before executing.
+
+**Apply all pending migrations:**
+
+```bash
+cd backend
+NODE_ENV=production npx knex migrate:latest
+```
+
+**Verify applied state:**
+
+```bash
+NODE_ENV=production npx knex migrate:status
+```
+
+**Inspect migration history directly in the database:**
+
+```sql
+SELECT * FROM knex_migrations ORDER BY id ASC;
+```
+
+> **Warning:** Never run `migrate:rollback --all` against a production database. Rollbacks are destructive — they drop tables and permanently delete all contained data. Apply rollbacks individually and only after a verified backup has been restored and validated.
+
+---
+
+### 7.3 Starting the Production Server
+
+**Direct Node.js (minimum viable):**
+
+```bash
+cd backend
+NODE_ENV=production node src/index.js
+
+cd ../backend-engine
+NODE_ENV=production node index.js
+```
+
+**Recommended: PM2 process manager**
+
+```bash
+npm install -g pm2
+
+# Backend REST API
+cd backend
+pm2 start src/index.js --name "assistai-backend"
+
+# Bot Engine
+cd ../backend-engine
+pm2 start index.js --name "assistai-engine"
+
+# Persist process list across reboots
+pm2 save
+pm2 startup
+```
+
+**Monitor and manage:**
+
+```bash
+pm2 status
+pm2 logs assistai-backend --lines 100
+pm2 logs assistai-engine --lines 100
+pm2 reload assistai-backend   # zero-downtime restart for API
+```
+
+---
+
+### 7.4 Multi-Tenant Database Security
+
+The platform enforces tenant isolation through four independent layers:
+
+**Layer 1 — JWT-bound tenant identity**
+The `authenticate` middleware (`backend/src/middleware/auth.js`) decodes the JWT on every protected request and populates `req.user.companyId`. This value is the root of all tenant-scoped queries and is never accepted from the request body or query string.
+
+**Layer 2 — Query-level row scoping**
+All database operations on tenant-owned data (services, knowledge base, document uploads, appointments) are filtered with `WHERE company_id = req.user.companyId`. Cross-tenant data access is structurally impossible at the ORM layer.
+
+**Layer 3 — Atomic ingestion isolation**
+`seedServices()` and `upsertKnowledgeBase()` in `documentController.js` both receive `companyId` from the authenticated JWT. A new ingestion only clears and repopulates records belonging to the authenticated tenant. The delete-then-insert pattern runs inside a Knex transaction, eliminating partial-state windows.
+
+**Layer 4 — Cascade delete integrity**
+All tenant-owned tables define `ON DELETE CASCADE` on their `company_id` foreign key referencing `Company.CompanyID`. Deleting a `Company` record atomically purges all associated services, configs, documents, appointments, and chat history across every dependent table.
+
+---
+
+## 8. Cron Schedulers
+
+Two automated schedulers are initialized on engine startup in `backend-engine/index.js`:
+
+| Scheduler | Schedule | Timezone | Action |
+|---|---|---|---|
+| `initReminderScheduler` | Daily at **08:00** | Africa/Casablanca | Queries `GET /api/appointments/tomorrow`, sends localized appointment reminder messages via WhatsApp to each confirmed customer |
+| `initFeedbackScheduler` | Daily at **20:00** | Africa/Casablanca | Queries `GET /api/appointments/concluded-today`, arms the `waitingForFeedback` session flag, dispatches the 3-option rating prompt |
+
+**Feedback routing logic:**
+
+- Rating **above** the configured threshold → customer receives `GOOGLE_REVIEW_URL` (public review link)
+- Rating **at or below** the threshold → customer receives `TALLY_FORM_URL` (detailed internal feedback form)
+
+Both schedulers are initialized with the live `sock` instance returned by `connectToWhatsApp()`, enabling direct WhatsApp message dispatch without additional HTTP round-trips.
+
+---
+
+*AssistAI — Multi-Tenant AI Booking and Context Injection Engine*

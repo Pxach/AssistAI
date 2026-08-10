@@ -36,7 +36,7 @@ function buildExtractionPrompt(rawText) {
   return `
 You are a precise data extraction assistant. Your ONLY job is to analyze the following business document and extract structured, factual information from it.
 
-Return ONLY a raw JSON object (no markdown, no code blocks, no extra text) with EXACTLY these two keys:
+Return ONLY a raw JSON object (no markdown, no code blocks, no extra text) with EXACTLY these three keys:
 
 1. "services": An array of service objects representing ALL bookable services mentioned in the document.
    - You MUST include EVERY service explicitly mentioned. Do NOT omit any. Do NOT invent or assume services not stated.
@@ -51,6 +51,12 @@ Return ONLY a raw JSON object (no markdown, no code blocks, no extra text) with 
    Include (if present): company name, location/address, business hours, contact details (phone, email, website),
    pricing, booking policies, cancellation policies, and any other information relevant to a customer-facing AI.
    Write it as clear, complete prose. Do NOT include the service list here — only supporting business context.
+
+3. "profile_data": A JSON object representing the company's business profile and staff. It MUST contain a "professionals" array.
+   - Each professional object must have:
+     * "name": string — the professional's name
+     * "services": array of strings — the exact names of the services they perform
+     * "working_hours": string — (e.g., "9am-5pm") or null if unspecified
 
 DOCUMENT TEXT:
 ---
@@ -107,6 +113,9 @@ async function extractStructuredData(rawText) {
   if (typeof parsed.company_info !== 'string') {
     parsed.company_info = '';
   }
+  if (!parsed.profile_data || typeof parsed.profile_data !== 'object') {
+    parsed.profile_data = { professionals: [] };
+  }
 
   // Normalise service records — ensure required fields have sensible defaults
   parsed.services = parsed.services
@@ -127,30 +136,45 @@ async function extractStructuredData(rawText) {
 // recently uploaded document and completely eliminates the need for manual seed
 // files (backend/src/database/seeds/01_initial_services.js is now obsolete).
 //
-async function seedServices(services) {
+async function seedServices(services, companyId) {
   return db.transaction(async (trx) => {
     // 1. Wipe the current catalog so stale entries from previous uploads are removed.
-    await trx('services').delete();
+    let deleteQuery = trx('services');
+    if (companyId) {
+      deleteQuery = deleteQuery.where('company_id', companyId);
+    } else {
+      deleteQuery = deleteQuery.whereNull('company_id');
+    }
+    await deleteQuery.delete();
 
     // 2. Nothing to insert — return empty array gracefully.
     if (!services || services.length === 0) return [];
 
+    // Add company_id to the services before inserting
+    const servicesToInsert = services.map(s => ({ ...s, company_id: companyId }));
+
     // 3. Bulk-insert the new catalog and return all created rows.
-    const inserted = await trx('services').insert(services).returning('*');
+    const inserted = await trx('services').insert(servicesToInsert).returning('*');
     return inserted;
   });
 }
 
-// ─── Step 5: Upsert knowledge_base ───────────────────────────────────────────
-async function upsertKnowledgeBase(content, sourceFile) {
+async function upsertKnowledgeBase(content, sourceFile, companyId) {
   if (!content || !content.trim()) return null;
 
   // Strategy: delete-then-insert — keeps only the most recent ingestion active.
   // This prevents stale data from piling up across multiple uploads.
-  await db('knowledge_base').delete();
+  let deleteQuery = db('knowledge_base');
+  if (companyId) {
+    deleteQuery = deleteQuery.where('company_id', companyId);
+  } else {
+    deleteQuery = deleteQuery.whereNull('company_id');
+  }
+  await deleteQuery.delete();
 
   const [row] = await db('knowledge_base')
     .insert({
+      company_id:  companyId,
       content:     content.trim(),
       source_file: sourceFile,
       updated_at:  db.fn.now(),
@@ -227,10 +251,11 @@ export async function parseDocument(req, res) {
     // ── 4. Seed services ───────────────────────────────────────────────────
     //    Atomically replaces the entire services catalog with what was
     //    extracted from this document. No manual seed files needed.
+    const companyId = (req.user?.companyId || req.user?.company_id) ?? null;
     let insertedServices = [];
     let servicesError = null;
     try {
-      insertedServices = await seedServices(structuredData.services);
+      insertedServices = await seedServices(structuredData.services, companyId);
       console.log(`[Ingestion] ✅ Services catalog replaced: ${insertedServices.length} service(s) ingested from "${originalname}".`);
     } catch (dbErr) {
       console.error('[Ingestion] Services DB replace failed:', dbErr.message);
@@ -242,22 +267,46 @@ export async function parseDocument(req, res) {
     let kbRow = null;
     let kbError = null;
     try {
-      kbRow = await upsertKnowledgeBase(structuredData.company_info, originalname);
+      kbRow = await upsertKnowledgeBase(structuredData.company_info, originalname, companyId);
     } catch (dbErr) {
       console.error('[Ingestion] Knowledge base DB upsert failed:', dbErr.message);
       kbError = dbErr.message;
     }
 
+    // ── 5.5 Save profile_data ──────────────────────────────────────────────
+    let profileError = null;
+    try {
+      if (companyId !== null) {
+        await db('company_configs')
+          .insert({ company_id: companyId, profile_data: JSON.stringify(structuredData.profile_data) })
+          .onConflict('company_id')
+          .merge(['profile_data', 'updated_at']);
+      } else {
+        const existing = await db('company_configs').first();
+        if (existing) {
+          await db('company_configs').update({ profile_data: JSON.stringify(structuredData.profile_data), updated_at: db.fn.now() });
+        } else {
+          await db('company_configs').insert({ profile_data: JSON.stringify(structuredData.profile_data), updated_at: db.fn.now() });
+        }
+      }
+      console.log(`[Ingestion] ✅ Profile data (professionals) saved to company_configs.`);
+    } catch (dbErr) {
+      console.error('[Ingestion] Profile data save failed:', dbErr.message);
+      profileError = dbErr.message;
+    }
+
     // ── 6. Response ────────────────────────────────────────────────────────
-    const hasErrors = servicesError || kbError;
+    const hasErrors = servicesError || kbError || profileError;
 
     return res.status(hasErrors ? 207 : 200).json({
       success:       !hasErrors,
       fileName:      originalname,
       services:      insertedServices,
       knowledge_base: kbRow,
+      profile_data:  structuredData.profile_data,
       ...(servicesError && { services_error: servicesError }),
       ...(kbError       && { knowledge_base_error: kbError }),
+      ...(profileError  && { profile_error: profileError }),
     });
 
   } catch (err) {

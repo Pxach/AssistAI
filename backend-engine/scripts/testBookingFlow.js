@@ -78,13 +78,12 @@ async function runBookingFlowTest() {
 
   const testMessages = [
   "Bghit nched rdv",
-  "UI/UX Interface Review", // Tests the ghost ID SQL fallback fix
-  "Ghada f 5:30 PM",        // Out-of-hours trigger (fails the 4:00 PM cutoff)
+  "Server Configuration", 
+  "Bghit m3a Sarah Connor ghada f 4:30 PM", // Intentionally pushes past her 4:00 PM shift end
   "Zayd",
   "zayd@mail.me",
   "Oui kolchi mzian"
 ];
-
   // Initialize simulated session for test user
   let session = {
     clientLanguage: 'fr',
